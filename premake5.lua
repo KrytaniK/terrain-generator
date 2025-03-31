@@ -72,7 +72,12 @@ function GenerateCoreSolution()
 
             buildoptions{ "/MDd", GetAllModuleFiles("third_party/aurion-core/lib/debug/modules")}
 
-            links { "debug/AurionCored.lib" }
+            postbuildcommands {
+                "{COPYFILE} third_party/aurion-core/lib/debug/AurionCore.dll %{wks.location}/build/bin/" .. outputdir .. "/%{prj.name}/",
+                "{COPYFILE} third_party/GLFW/lib/glfw3.dll %{wks.location}/build/bin/" .. outputdir .. "/%{prj.name}/"
+            }
+
+            links { "debug/AurionCore.lib" }
 
             defines { "AURION_CORE_DEBUG" }
 
@@ -81,7 +86,11 @@ function GenerateCoreSolution()
             runtime "Release"
             optimize "On"
 
-           buildoptions{ "/MD", GetAllModuleFiles("third_party/aurion-core/lib/modules")}
+            buildoptions{ "/MD", GetAllModuleFiles("third_party/aurion-core/lib/modules")}
+            postbuildcommands {
+                "{COPYFILE} third_party/aurion-core/lib/AurionCore.dll %{wks.location}/build/bin/" .. outputdir .. "/%{prj.name}/",
+                "{COPYFILE} third_party/GLFW/lib/glfw3.dll %{wks.location}/build/bin/" .. outputdir .. "/%{prj.name}/"
+            }
 
             links { "AurionCore.lib" }
 
@@ -91,6 +100,10 @@ function GenerateCoreSolution()
             optimize "On"
 
             buildoptions{ "/MD", GetAllModuleFiles("third_party/aurion-core/lib/modules")}
+            postbuildcommands {
+                "{COPYFILE} third_party/aurion-core/lib/AurionCore.dll %{wks.location}/build/bin/" .. outputdir .. "/%{prj.name}/",
+                "{COPYFILE} third_party/GLFW/lib/glfw3.dll %{wks.location}/build/bin/" .. outputdir .. "/%{prj.name}/"
+            }
 
             links { "AurionCore.lib" }
 

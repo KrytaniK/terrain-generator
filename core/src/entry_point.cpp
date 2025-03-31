@@ -1,4 +1,4 @@
-#include <iostream>
+#include <aurion-core/macros/AurionLog.h>
 
 import Aurion.Application;
 
@@ -45,7 +45,7 @@ void Sandbox::Load()
 
 void Sandbox::Start()
 {
-	std::cout << "Hello World" << std::endl;
+	AURION_INFO("Hello World!");
 }
 
 void Sandbox::Update()
