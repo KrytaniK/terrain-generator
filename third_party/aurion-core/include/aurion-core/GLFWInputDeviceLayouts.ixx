@@ -14,13 +14,13 @@ import :InputCodes;
 
 export namespace Aurion
 {
-	AURION_API const InputDeviceInfo C_GLFW_MOUSE_INFO{
+	const InputDeviceInfo C_GLFW_MOUSE_INFO{
 		.id = 0,
 		.classification = GLFW_INPUT_DEVICE_CLASS_MOUSE,
 		.alias = "Mouse",
 	};
 
-	AURION_API const InputDeviceLayout C_GLFW_MOUSE_LAYOUT{
+	const InputDeviceLayout C_GLFW_MOUSE_LAYOUT{
 		.name = "Mouse",
 		.id = 0,
 		.size = 1 + (2 * sizeof(double)) + (2 * sizeof(double)), // Button Map + Scroll + Position sizes
@@ -53,13 +53,13 @@ export namespace Aurion
 		}
 	};
 
-	AURION_API const InputDeviceInfo C_GLFW_KEYBOARD_INFO{
+	const InputDeviceInfo C_GLFW_KEYBOARD_INFO{
 				.id = 1,
 				.classification = GLFW_INPUT_DEVICE_CLASS_KEYBOARD,
 				.alias = "Keyboard",
 	};
 
-	AURION_API const InputDeviceLayout C_GLFW_KEYBOARD_LAYOUT{
+	const InputDeviceLayout C_GLFW_KEYBOARD_LAYOUT{
 		.name = "Keyboard",
 		.id = 1,
 		.size = 15, // 120/8 bytes, 1 bit per key
