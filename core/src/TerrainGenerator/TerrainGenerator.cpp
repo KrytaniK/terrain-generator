@@ -33,7 +33,7 @@ void TerrainGenerator::Start()
 	Aurion::WindowConfig window_config;
 	window_config.title = "New Window";
 
-	m_window_driver.InitWindow(window_config).window;
+	Aurion::WindowHandle window_handle = m_window_driver.InitWindow(window_config);
 }
 
 void TerrainGenerator::Run()
