@@ -1,6 +1,6 @@
 module;
 
-#include <span>
+#include <vector>
 #include <cstdint>
 
 export module Graphics:Driver;
@@ -18,6 +18,8 @@ export
 
 		virtual const uint64_t GetType() = 0;
 
-		virtual IRenderer CreateRenderer(std::span<Aurion::WindowHandle> windows) = 0;
+		virtual void Initialize() = 0;
+
+		virtual IRenderer* CreateRenderer(const std::vector<Aurion::WindowHandle>& windows = {}) = 0;
 	};
 }

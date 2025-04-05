@@ -1,6 +1,12 @@
 module;
 
+#include <span>
+
 export module Graphics:Renderer;
+
+import Aurion.Window;
+
+import :Window;
 
 export
 {
@@ -9,14 +15,14 @@ export
 	public:
 		virtual ~IRenderer() = default;
 
-		virtual void OnInit() = 0;
-		virtual void OnShutdown() = 0;
+		virtual void BeginFrame() = 0;
+		virtual void EndFrame() = 0;
 
-		virtual void OnFrameBegin() = 0;
-		virtual void OnFrameEnd() = 0;
+		virtual bool AddWindow(const Aurion::WindowHandle& handle) = 0;
 
-		virtual void OnUIRender() = 0;
+		virtual void SetWindowEnabled(const Aurion::WindowHandle& handle, bool enabled) = 0;
 
-		virtual void OnFramebufferResize() = 0;
+		virtual IGraphicsWindow* GetGraphicsWindow(const Aurion::WindowHandle& handle) = 0;
+		virtual IGraphicsWindow* GetGraphicsWindow(const uint64_t& window_id) = 0;
 	};
 }

@@ -3,6 +3,8 @@ export module TerrainGenerator;
 import Aurion.Application;
 import Aurion.GLFW;
 
+import Vulkan;
+
 export
 {
 	class TerrainGenerator : public Aurion::IApplication
@@ -11,7 +13,6 @@ export
 		TerrainGenerator();
 		virtual ~TerrainGenerator() override;
 
-		// Inherited via IApplication
 		void StartAndRun() override;
 
 	private:
@@ -22,5 +23,8 @@ export
 
 	private:
 		Aurion::GLFWDriver m_window_driver;
+		VulkanDriver m_vulkan_driver;
+		IRenderer* m_renderer;
+		bool m_should_close;
 	};
 }
