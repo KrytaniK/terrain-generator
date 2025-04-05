@@ -17,9 +17,9 @@ export
 
 		virtual void SetUIRenderCallback(const std::function<void()>& ui_render_fun) = 0;
 
-		virtual void OnRender() = 0;
+		virtual bool OnRender() = 0;
 
-		virtual void OnUIRender() = 0;
+		virtual bool OnUIRender() = 0;
 
 		virtual void Enable() = 0;
 

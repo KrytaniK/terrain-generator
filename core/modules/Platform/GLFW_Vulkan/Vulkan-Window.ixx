@@ -34,14 +34,14 @@ export
 		VulkanWindow();
 		virtual ~VulkanWindow() override;
 
-		void Attach(const Aurion::WindowHandle& handle) override;
+		virtual void Attach(const Aurion::WindowHandle& handle) override;
 		void Attach(const Aurion::WindowHandle& handle, VulkanDevice* logical_device);
 
-		void SetUIRenderCallback(const std::function<void()>& ui_render_fun) override;
+		virtual void SetUIRenderCallback(const std::function<void()>& ui_render_fun) override;
 
-		void OnRender() override;
+		virtual bool OnRender() override;
 
-		virtual void OnUIRender() override;
+		virtual bool OnUIRender() override;
 
 		virtual void Enable() override;
 

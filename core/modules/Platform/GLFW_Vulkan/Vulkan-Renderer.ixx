@@ -1,6 +1,7 @@
 module;
 
 #include <cstdint>
+#include <set>
 #include <unordered_map>
 
 #include <vulkan/vulkan.h>
@@ -34,10 +35,14 @@ export
 
 		virtual VulkanWindow* GetGraphicsWindow(const Aurion::WindowHandle& handle) override;
 		virtual VulkanWindow* GetGraphicsWindow(const uint64_t& window_id) override;
+
+		virtual bool RemoveGraphicsWindow(const Aurion::WindowHandle& handle) override;
+		virtual bool RemoveGraphicsWindow(const uint64_t& window_id) override;
 		
 	private:
 		VulkanDevice m_logical_device;
 		std::unordered_map<uint64_t, VulkanWindow> m_windows;
+		std::set<uint64_t> m_windows_to_remove;
 		uint32_t m_max_in_flight_frames;
 	};
 }

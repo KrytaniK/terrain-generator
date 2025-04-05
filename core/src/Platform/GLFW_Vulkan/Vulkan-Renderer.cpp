@@ -55,14 +55,25 @@ void VulkanRenderer::Shutdown()
 
 void VulkanRenderer::BeginFrame()
 {
-	for (auto& [id, ctx] : m_windows)
-		ctx.OnRender();
+	// If rendering fails for whatever reason, remove the
+	//	graphics window.
+	for (auto& [id, window] : m_windows)
+		if (!window.OnRender())
+			m_windows_to_remove.emplace(id);
 }
 
 void VulkanRenderer::EndFrame()
 {
-	for (auto& [id, ctx] : m_windows)
-		ctx.OnUIRender();
+	// If rendering fails for whatever reason, remove the
+	//	graphics window.
+	for (auto& [id, window] : m_windows)
+		if (!window.OnUIRender())
+			m_windows_to_remove.emplace(id);
+
+	// At the end of the frame, remove any windows that
+	//	have become invalidated
+	for (const uint64_t& id : m_windows_to_remove)
+		this->RemoveGraphicsWindow(id);
 }
 
 bool VulkanRenderer::AddWindow(const Aurion::WindowHandle& handle)
@@ -104,4 +115,22 @@ VulkanWindow* VulkanRenderer::GetGraphicsWindow(const uint64_t& window_id)
 		return nullptr;
 
 	return &m_windows.at(window_id);
+}
+
+bool VulkanRenderer::RemoveGraphicsWindow(const Aurion::WindowHandle& handle)
+{
+	if (!m_windows.contains(handle.id))
+		return false;
+
+	m_windows.erase(handle.id);
+	return true;
+}
+
+bool VulkanRenderer::RemoveGraphicsWindow(const uint64_t& window_id)
+{
+	if (!m_windows.contains(window_id))
+		return false;
+
+	m_windows.erase(window_id);
+	return true;
 }

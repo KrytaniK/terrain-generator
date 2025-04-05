@@ -1,5 +1,6 @@
 #include <macros/AurionLog.h>
 
+#include <set>
 #include <functional>
 #include <algorithm>
 
@@ -76,6 +77,28 @@ void VulkanWindow::Attach(const Aurion::WindowHandle& handle)
 	// Update internal handle
 	m_handle = handle;
 
+	GLFWwindow* win = (GLFWwindow*)m_handle.window->GetNativeHandle();
+	glfwSetWindowUserPointer(win, this);
+	glfwSetWindowCloseCallback(win, [](GLFWwindow* window) {
+		VulkanWindow* _this = (VulkanWindow*)glfwGetWindowUserPointer(window);
+
+		// Disable the Vulkan Window
+		_this->Disable();
+
+		// Let the GPU finish any work.
+		vkDeviceWaitIdle(_this->m_logical_device->handle);
+
+		// Close the window
+		_this->m_handle.window->Close();
+	});
+	glfwSetFramebufferSizeCallback(win, [](GLFWwindow* window, int width, int height) {
+		VulkanWindow* _this = (VulkanWindow*)glfwGetWindowUserPointer(window);
+
+		_this->Disable();
+		_this->RecreateSwapchain();
+		_this->Enable();
+	});
+
 	m_attached = true;
 }
 
@@ -83,7 +106,8 @@ void VulkanWindow::Attach(const Aurion::WindowHandle& handle, VulkanDevice* logi
 {
 	// Update internal handles
 	m_logical_device = logical_device;
-	m_handle = handle;
+
+	this->Attach(handle);
 
 	if (!m_handle.window || !m_logical_device)
 	{
@@ -172,14 +196,14 @@ void VulkanWindow::SetUIRenderCallback(const std::function<void()>& ui_render_fu
 		m_ui_render_fun = ui_render_fun;
 }
 
-void VulkanWindow::OnRender()
+bool VulkanWindow::OnRender()
 {
 	// Always update the window
 	m_handle.window->Update();
 
-	// But don't attempt to render if not enabled.
-	if (!m_enabled)
-		return;
+	// But don't attempt to render if not enabled, or the window is no longer open
+	if (!m_enabled || !m_handle.window->IsOpen())
+		return false;
 
 	if (!m_handle.window || !m_logical_device)
 	{
@@ -187,26 +211,67 @@ void VulkanWindow::OnRender()
 			"[VulkanWindow] Failed to render to window. Invalid %s",
 			m_handle.window == nullptr ? "OS handle." : "logical device"
 		);
-		return;
+		return false;
 	}
 
 	// Setup the current frame
 	const VulkanFrame& frame = m_frames[m_current_frame];
+	VkCommandBufferBeginInfo frame_begin_info{
+		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+		.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+	};
+	
+	// Reset Fences
+	vkWaitForFences(m_logical_device->handle, 1, &frame.graphics_fence, VK_TRUE, UINT64_MAX);
+	vkWaitForFences(m_logical_device->handle, 1, &frame.compute_fence, VK_TRUE, UINT64_MAX);
+	vkResetFences(m_logical_device->handle, 1, &frame.graphics_fence);
+	vkResetFences(m_logical_device->handle, 1, &frame.compute_fence);
+
+	// Opt for command buffer re-use
+	vkResetCommandPool(m_logical_device->handle, frame.graphics_cmd_pool, VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT);
+	vkResetCommandPool(m_logical_device->handle, frame.compute_cmd_pool, VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT);
+
+	// Grab swapchain image
+	VkResult acquire_result = vkAcquireNextImageKHR(
+		m_logical_device->handle,
+		m_surface.swapchain.handle,
+		UINT64_MAX,
+		frame.swapchain_semaphore,
+		nullptr,
+		&m_surface.swapchain.current_image_index
+	);
+
+	// Recreate swapchain if needed
+	if (acquire_result == VK_ERROR_OUT_OF_DATE_KHR)
+	{
+		AURION_ERROR("SWAPCHAIN IS OUT OF DATE");
+		this->RecreateSwapchain();
+	}
+	else if (acquire_result != VK_SUCCESS && acquire_result == VK_SUBOPTIMAL_KHR)
+	{
+		AURION_CRITICAL("[Vulkan Window] Failed to acquire swapchain image!");
+		return false;
+	}
+
+	vkBeginCommandBuffer(frame.graphics_cmd_buffer, &frame_begin_info);
+	vkBeginCommandBuffer(frame.compute_cmd_buffer, &frame_begin_info);
 
 	// Process all render commands for this window
 
 	// If we want to render the image as a UI texture, do so in OnUIRender
 	if (m_render_as_ui)
-		return;
+		return true;
 
 	// If not rendering as a UI texture, copy the render image to the current swapchain image
+
+	return true;
 }
 
-void VulkanWindow::OnUIRender()
+bool VulkanWindow::OnUIRender()
 {
-	// Don't attempt to render if not enabled.
-	if (!m_enabled)
-		return;
+	// Don't attempt to render if not enabled, or the window is no longer open
+	if (!m_enabled || !m_handle.window->IsOpen())
+		return false;
 
 	const VulkanFrame& frame = m_frames[m_current_frame];
 
@@ -220,7 +285,116 @@ void VulkanWindow::OnUIRender()
 	if (m_ui_render_fun)
 		m_ui_render_fun();
 
+	// Transition the swapchain image into a valid presentation format
+	{
+		VkImageMemoryBarrier2 barrier{};
+		barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+		barrier.pNext = nullptr;
+
+		// Set barrier masks
+		barrier.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+		barrier.srcAccessMask = VK_ACCESS_2_MEMORY_READ_BIT;
+		barrier.dstStageMask = VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT;
+		barrier.dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT;
+
+		// Transition from old to new layout
+		barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+		// Create Image Subresource Range with aspect mask
+		VkImageAspectFlags aspect_mask = VK_IMAGE_ASPECT_COLOR_BIT;
+		VkImageSubresourceRange sub_image{};
+		sub_image.aspectMask = aspect_mask;
+		sub_image.baseMipLevel = 0;
+		sub_image.levelCount = VK_REMAINING_MIP_LEVELS;
+		sub_image.baseArrayLayer = 0;
+		sub_image.layerCount = VK_REMAINING_ARRAY_LAYERS;
+
+		// Create aspect mask
+		barrier.subresourceRange = sub_image;
+		barrier.image = m_surface.swapchain.images[m_surface.swapchain.current_image_index];
+
+		// Dependency struct
+		VkDependencyInfo dep_info {};
+		dep_info.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+		dep_info.pNext = nullptr;
+
+		// Attach image barrier
+		dep_info.imageMemoryBarrierCount = 1;
+		dep_info.pImageMemoryBarriers = &barrier;
+
+		vkCmdPipelineBarrier2(frame.graphics_cmd_buffer, &dep_info);
+	}
+
+	vkEndCommandBuffer(frame.graphics_cmd_buffer);
+	vkEndCommandBuffer(frame.compute_cmd_buffer);
+
+	// Submit Render Data
+	{
+		VkCommandBufferSubmitInfo graphics_cmd_buffer_info{};
+		graphics_cmd_buffer_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+		graphics_cmd_buffer_info.commandBuffer = frame.graphics_cmd_buffer;
+
+		VkCommandBufferSubmitInfo compute_cmd_buffer_info{};
+		compute_cmd_buffer_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+		compute_cmd_buffer_info.commandBuffer = frame.compute_cmd_buffer;
+
+		VkSemaphoreSubmitInfo graphics_signal_semaphore_info{};
+		graphics_signal_semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+		graphics_signal_semaphore_info.stageMask = VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT;
+		graphics_signal_semaphore_info.semaphore = frame.graphics_semaphore;
+
+		VkSemaphoreSubmitInfo compute_signal_semaphore_info{};
+		compute_signal_semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+		compute_signal_semaphore_info.stageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+		compute_signal_semaphore_info.semaphore = frame.compute_semaphore;
+
+		VkSemaphoreSubmitInfo wait_semaphore_info{};
+		wait_semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+		wait_semaphore_info.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+		wait_semaphore_info.semaphore = frame.swapchain_semaphore;
+
+		VkSubmitInfo2 graphics_submit_info{};
+		graphics_submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+		graphics_submit_info.commandBufferInfoCount = 1;
+		graphics_submit_info.pCommandBufferInfos = &graphics_cmd_buffer_info;
+		graphics_submit_info.signalSemaphoreInfoCount = 1;
+		graphics_submit_info.pSignalSemaphoreInfos = &graphics_signal_semaphore_info;
+		graphics_submit_info.waitSemaphoreInfoCount = 1;
+		graphics_submit_info.pWaitSemaphoreInfos = &wait_semaphore_info;
+
+		VkSubmitInfo2 compute_submit_info{};
+		compute_submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+		compute_submit_info.commandBufferInfoCount = 1;
+		compute_submit_info.pCommandBufferInfos = &compute_cmd_buffer_info;
+		compute_submit_info.signalSemaphoreInfoCount = 1;
+		compute_submit_info.pSignalSemaphoreInfos = &compute_signal_semaphore_info;
+
+		// Submit Graphics Queue
+		vkQueueSubmit2(m_logical_device->graphics_queue, 1, &graphics_submit_info, frame.graphics_fence);
+
+		// Submit Compute Queue
+		vkQueueSubmit2(m_logical_device->compute_queue, 1, &compute_submit_info, frame.compute_fence);
+	}
+
+	// Wait on graphics and comput queues to finish before presenting
+	std::vector<VkSemaphore> wait_semaphores = { frame.graphics_semaphore, frame.compute_semaphore };
+
+	// Present the image
+	VkPresentInfoKHR present_info{};
+	present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+	present_info.waitSemaphoreCount = (uint32_t)wait_semaphores.size();
+	present_info.pWaitSemaphores = wait_semaphores.data();
+	present_info.swapchainCount = 1;
+	present_info.pSwapchains = &m_surface.swapchain.handle;
+	present_info.pImageIndices = &m_surface.swapchain.current_image_index;
+
+	vkQueuePresentKHR(m_surface.present_queue, &present_info);
+
+	// Increase the current frame
 	m_current_frame = (m_current_frame + 1) % m_frames.size();
+
+	return true;
 }
 
 void VulkanWindow::Enable()
@@ -356,8 +530,8 @@ void VulkanWindow::SetMaxFramesInFlight(const uint32_t& max_in_flight_frames)
 			}
 
 			// Compute Command Buffer
-			buffer_info.commandPool = frame.graphics_cmd_pool;
-			if (vkAllocateCommandBuffers(m_logical_device->handle, &buffer_info, &frame.graphics_cmd_buffer) != VK_SUCCESS)
+			buffer_info.commandPool = frame.compute_cmd_pool;
+			if (vkAllocateCommandBuffers(m_logical_device->handle, &buffer_info, &frame.compute_cmd_buffer) != VK_SUCCESS)
 			{
 				AURION_ERROR("[VulkanWindow] Frame %d: Failed to create graphics command buffer!", create_index);
 				return;
@@ -419,6 +593,20 @@ void VulkanWindow::SetMaxFramesInFlight(const uint32_t& max_in_flight_frames)
 
 void VulkanWindow::RecreateSwapchain()
 {
+	// Wait for GPU to finish work
+	vkDeviceWaitIdle(m_logical_device->handle);
+
+	// Cleanup old swapchain resources
+	if (m_surface.swapchain.handle != VK_NULL_HANDLE)
+	{
+		// Image views
+		for (size_t i = 0; i < m_surface.swapchain.image_views.size(); i++)
+			vkDestroyImageView(m_logical_device->handle, m_surface.swapchain.image_views[i], nullptr);
+
+		// Swapchain
+		vkDestroySwapchainKHR(m_logical_device->handle, m_surface.swapchain.handle, nullptr);
+	}
+
 	// Query Swapchain support and create swapchain
 	{
 		// Get surface capabilities
@@ -616,4 +804,38 @@ void VulkanWindow::RecreateSwapchain()
 			}
 		}
 	}
+
+	// Revalidate Frame ImageData
+	for (size_t i = 0; i < m_frames.size(); i++)
+	{
+		VulkanFrame& frame = m_frames[i];
+
+		// Destroy old frame resources
+		vkDestroySampler(m_logical_device->handle, frame.image.sampler, nullptr);
+		vkDestroyImageView(m_logical_device->handle, frame.image.view, nullptr);
+		vmaDestroyImage(m_logical_device->allocator, frame.image.image, frame.image.allocation);
+
+		VulkanImageCreateInfo img_create_info{};
+		img_create_info.extent = VkExtent3D{
+			.width = m_surface.swapchain.extent.width,
+			.height = m_surface.swapchain.extent.height,
+			.depth = 1
+		};
+
+		// Ensure each image matches the swapchain format
+		img_create_info.format = m_surface.swapchain.format.format;
+
+		img_create_info.usage_flags |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+		img_create_info.usage_flags |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+		img_create_info.usage_flags |= VK_IMAGE_USAGE_STORAGE_BIT;
+		img_create_info.usage_flags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+		img_create_info.usage_flags |= VK_IMAGE_USAGE_SAMPLED_BIT;
+
+		img_create_info.aspect_flags = VK_IMAGE_ASPECT_COLOR_BIT;
+
+		frame.image = VulkanImage::Create(m_logical_device->handle, m_logical_device->allocator, img_create_info);
+	}
+
+	// Re-enable for rendering
+	m_surface.swapchain.current_image_index = 0;
 }

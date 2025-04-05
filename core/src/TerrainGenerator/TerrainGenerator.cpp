@@ -44,16 +44,6 @@ void TerrainGenerator::Start()
 	// Create the main window
 	Aurion::WindowHandle main_window = m_window_driver.InitWindow(window_config);
 
-	// Setup primary glfw window
-	GLFWwindow* glfw_window = (GLFWwindow*)main_window.window->GetNativeHandle();
-	glfwSetWindowUserPointer(glfw_window, this);
-
-	glfwSetWindowCloseCallback(glfw_window, [](GLFWwindow* window) {
-		TerrainGenerator* _this = (TerrainGenerator*)glfwGetWindowUserPointer(window);
-
-		_this->m_should_close = true;
-	});
-
 	m_renderer->AddWindow(main_window);
 }
 
@@ -61,11 +51,13 @@ void TerrainGenerator::Run()
 {
 	m_should_close = false;
 
-	Aurion::IWindow* window = m_window_driver.GetWindow("Terrain Generator").window;
+	Aurion::IWindow* a = m_window_driver.GetWindow("Terrain Generator").window;
 	while (!m_should_close)
 	{
 		m_renderer->BeginFrame();
 		m_renderer->EndFrame();
+
+		m_should_close = !a->IsOpen();
 	}
 }
 

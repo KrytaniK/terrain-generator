@@ -24,5 +24,8 @@ export
 
 		virtual IGraphicsWindow* GetGraphicsWindow(const Aurion::WindowHandle& handle) = 0;
 		virtual IGraphicsWindow* GetGraphicsWindow(const uint64_t& window_id) = 0;
+
+		virtual bool RemoveGraphicsWindow(const Aurion::WindowHandle& handle) = 0;
+		virtual bool RemoveGraphicsWindow(const uint64_t& window_id) = 0;
 	};
 }
