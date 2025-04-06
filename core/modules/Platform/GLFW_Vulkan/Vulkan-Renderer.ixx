@@ -2,6 +2,7 @@ module;
 
 #include <cstdint>
 #include <set>
+#include <vector>
 #include <unordered_map>
 
 #include <vulkan/vulkan.h>
@@ -12,6 +13,7 @@ import Graphics;
 
 import :Device;
 import :Window;
+import :Pipeline;
 
 export
 {
@@ -38,9 +40,13 @@ export
 
 		virtual bool RemoveGraphicsWindow(const Aurion::WindowHandle& handle) override;
 		virtual bool RemoveGraphicsWindow(const uint64_t& window_id) override;
+
+		VulkanPipelineBuilder* GetPipelineBuilder();
 		
 	private:
 		VulkanDevice m_logical_device;
+		VulkanPipelineBuilder m_pipeline_builder;
+		std::vector<VulkanPipeline> m_pipelines;
 		std::unordered_map<uint64_t, VulkanWindow> m_windows;
 		std::set<uint64_t> m_windows_to_remove;
 		uint32_t m_max_in_flight_frames;

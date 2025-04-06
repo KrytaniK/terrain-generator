@@ -256,12 +256,16 @@ bool VulkanWindow::OnRender()
 	vkBeginCommandBuffer(frame.graphics_cmd_buffer, &frame_begin_info);
 	vkBeginCommandBuffer(frame.compute_cmd_buffer, &frame_begin_info);
 
+	// TODO:
 	// Process all render commands for this window
+	// -------------------------------------------
 
 	// If we want to render the image as a UI texture, do so in OnUIRender
 	if (m_render_as_ui)
 		return true;
 
+	// TODO:
+	// -------------------------------------------
 	// If not rendering as a UI texture, copy the render image to the current swapchain image
 
 	return true;

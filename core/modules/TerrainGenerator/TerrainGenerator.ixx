@@ -24,7 +24,7 @@ export
 	private:
 		Aurion::GLFWDriver m_window_driver;
 		VulkanDriver m_vulkan_driver;
-		IRenderer* m_renderer;
+		VulkanRenderer* m_renderer;
 		bool m_should_close;
 	};
 }

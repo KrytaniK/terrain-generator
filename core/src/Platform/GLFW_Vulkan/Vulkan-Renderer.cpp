@@ -31,6 +31,9 @@ void VulkanRenderer::Init(const VkInstance& vk_instance, const VulkanDeviceRequi
 	m_max_in_flight_frames = max_in_flight_frames;
 
 	m_logical_device = VulkanDevice::Create(vk_instance, logical_device_reqs);
+
+	// Initialize pipeline builder
+	m_pipeline_builder.Initialize(&m_logical_device, m_pipelines);
 }
 
 void VulkanRenderer::Shutdown()
@@ -41,6 +44,26 @@ void VulkanRenderer::Shutdown()
 
 	// Wait for GPU to finish work
 	vkDeviceWaitIdle(m_logical_device.handle);
+
+	// Cleanup any pipeline resources
+	for (size_t i = 0; i < m_pipelines.size(); i++)
+	{
+		VulkanPipeline& pipeline = m_pipelines[i];
+
+		// Cleanup all descriptor pools
+		for (size_t j = 0; j < pipeline.descriptor_pools.size(); j++)
+			vkDestroyDescriptorPool(m_logical_device.handle, pipeline.descriptor_pools[i], nullptr);
+
+		// Clean up render pass
+		vkDestroyRenderPass(m_logical_device.handle, pipeline.render_pass, nullptr);
+
+		// Clean up pipeline layout
+		vkDestroyPipelineLayout(m_logical_device.handle, pipeline.layout, nullptr);
+
+		// Clean up pipeline handle
+		vkDestroyPipeline(m_logical_device.handle, pipeline.handle, nullptr);
+	}
+	m_pipeline_builder.Cleanup();
 
 	// Ensure all window resources have been cleaned up BEFORE the logical
 	//	device is destroyed
@@ -133,4 +156,9 @@ bool VulkanRenderer::RemoveGraphicsWindow(const uint64_t& window_id)
 
 	m_windows.erase(window_id);
 	return true;
+}
+
+VulkanPipelineBuilder* VulkanRenderer::GetPipelineBuilder()
+{
+	return &m_pipeline_builder;
 }

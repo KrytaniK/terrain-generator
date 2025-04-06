@@ -11,6 +11,7 @@ import Graphics;
 
 import :Renderer;
 import :Device;
+import :Pipeline;
 
 export
 {
