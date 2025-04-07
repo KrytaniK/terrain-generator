@@ -162,3 +162,35 @@ VulkanPipelineBuilder* VulkanRenderer::GetPipelineBuilder()
 {
 	return &m_pipeline_builder;
 }
+
+void VulkanRenderer::BindCommand(const Aurion::WindowHandle& window_handle, const std::function<void(const VulkanCommand&)>& command)
+{
+	// Get the graphics window
+	VulkanWindow* window = this->GetGraphicsWindow(window_handle);
+
+	// Bail if the window wasn't found
+	if (!window)
+	{
+		AURION_ERROR("[Vulkan Renderer] Failed to submit render command: Window with id %d does not exist", window_handle.id);
+		return;
+	}
+
+	// Submit the command to the window's command buffer
+	window->BindRenderCommand(command);
+}
+
+void VulkanRenderer::SubmitCommand(const Aurion::WindowHandle& window_handle, const std::function<void(const VulkanCommand&)>& command)
+{
+	// Get the graphics window
+	VulkanWindow* window = this->GetGraphicsWindow(window_handle);
+
+	// Bail if the window wasn't found
+	if (!window)
+	{
+		AURION_ERROR("[Vulkan Renderer] Failed to submit render command: Window with id %d does not exist", window_handle.id);
+		return;
+	}
+
+	// Submit the command to the window's command buffer
+	window->SubmitRenderCommand(command);
+}

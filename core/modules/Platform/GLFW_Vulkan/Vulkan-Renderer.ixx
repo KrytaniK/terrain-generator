@@ -15,6 +15,8 @@ import :Device;
 import :Window;
 import :Pipeline;
 
+import :Command;
+
 export
 {
 	class VulkanRenderer : public IRenderer
@@ -42,6 +44,15 @@ export
 		virtual bool RemoveGraphicsWindow(const uint64_t& window_id) override;
 
 		VulkanPipelineBuilder* GetPipelineBuilder();
+
+		// Binds a render command to the window for repeated calls. CAUTION: These will NOT be cleared each frame.
+		void BindCommand(const Aurion::WindowHandle& window_handle, const std::function<void(const VulkanCommand&)>& command);
+
+		// Submits a render command for execution. Gets cleared every frame
+		void SubmitCommand(const Aurion::WindowHandle& window_handle, const std::function<void(const VulkanCommand&)>& command);
+
+		// Submits a render command for immediate execution outside of the primary render loop.
+		//void SubmitCommandImmediate();
 		
 	private:
 		VulkanDevice m_logical_device;

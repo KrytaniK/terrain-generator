@@ -20,6 +20,8 @@ export
 	struct VulkanImage
 	{
 		static VulkanImage Create(const VkDevice& logical_device, const VmaAllocator& allocator, const VulkanImageCreateInfo& create_info);
+		static void Blit(const VkCommandBuffer& cmd_buffer, const VkImage& src, const VkImage& dst, const VkExtent3D& src_extent, const VkExtent3D& dst_extent);
+		static void TransitionLayout(const VkCommandBuffer& cmd_buffer, const VkImage& image, const VkImageLayout& src, const VkImageLayout& dst);
 
 		VmaAllocation allocation = VK_NULL_HANDLE;
 		VkSampler sampler = VK_NULL_HANDLE;

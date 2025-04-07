@@ -17,6 +17,9 @@ import Aurion.Window;
 import :Device;
 import :Swapchain;
 import :Frame;
+import :Image;
+
+import :Command;
 
 export
 {
@@ -55,6 +58,26 @@ export
 
 		void RecreateSwapchain();
 
+		// Binds a render command for repeated calls. CAUTION: These will NOT be cleared each frame.
+		void BindRenderCommand(const std::function<void(const VulkanCommand&)>& command);
+
+		// Submits a render command for execution during the current frame.
+		void SubmitRenderCommand(const std::function<void(const VulkanCommand&)>& command);
+
+		// Submits a render command for immediate execution (outside of the current frame)
+		void SubmitRenderCommandImmediate(const std::function<void(const VkCommandBuffer&)>& command);
+
+	private:
+		void Reset(const VulkanFrame& frame);
+		void Begin(const VulkanFrame& frame);
+		void Record(const VulkanFrame& frame);
+		void End(const VulkanFrame& frame);
+
+		bool SwapBuffers(const VulkanFrame& frame);
+		void SubmitAndPresent(const VulkanFrame& frame);
+
+		void CopyImageToSwapchain(const VkCommandBuffer& cmd_buffer, const VkImage& image, const VkExtent3D& extent);
+
 	private:
 		Aurion::WindowHandle m_handle; // OS Window Handle
 		VulkanDevice* m_logical_device; // Vulkan Device Information
@@ -62,6 +85,16 @@ export
 		ImGuiContext* m_imgui_context; // ImGuiContext for this window
 		std::function<void()> m_ui_render_fun;// UI Render Function
 		std::vector<VulkanFrame> m_frames;
+		VulkanImage m_cached_image;
+
+		// Commands
+		VkCommandPool m_immediate_cmd_pool;
+		VkCommandBuffer m_immediate_cmd_buffer;
+		VkFence m_immediate_fence;
+
+		std::vector<std::function<void(const VulkanCommand&)>> m_bound_commands;
+		std::vector<std::function<void(const VulkanCommand&)>> m_submit_commands;
+
 		size_t m_current_frame;
 		bool m_render_as_ui;
 		bool m_attached;

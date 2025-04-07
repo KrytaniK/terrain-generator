@@ -71,3 +71,77 @@ VulkanImage VulkanImage::Create(const VkDevice& logical_device, const VmaAllocat
 
 	return out_image;
 }
+
+void VulkanImage::Blit(const VkCommandBuffer& cmd_buffer, const VkImage& src, const VkImage& dst, const VkExtent3D& src_extent, const VkExtent3D& dst_extent)
+{
+	VkImageBlit2 blit_region{ .sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2, .pNext = nullptr };
+
+	blit_region.srcOffsets[1].x = src_extent.width;
+	blit_region.srcOffsets[1].y = src_extent.height;
+	blit_region.srcOffsets[1].z = 1;
+
+	blit_region.dstOffsets[1].x = dst_extent.width;
+	blit_region.dstOffsets[1].y = dst_extent.height;
+	blit_region.dstOffsets[1].z = 1;
+
+	blit_region.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	blit_region.srcSubresource.baseArrayLayer = 0;
+	blit_region.srcSubresource.layerCount = 1;
+	blit_region.srcSubresource.mipLevel = 0;
+
+	blit_region.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	blit_region.dstSubresource.baseArrayLayer = 0;
+	blit_region.dstSubresource.layerCount = 1;
+	blit_region.dstSubresource.mipLevel = 0;
+
+	VkBlitImageInfo2 blit_info{ .sType = VK_STRUCTURE_TYPE_BLIT_IMAGE_INFO_2, .pNext = nullptr };
+	blit_info.srcImage = src;
+	blit_info.srcImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+	blit_info.dstImage = dst;
+	blit_info.dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+	blit_info.filter = VK_FILTER_LINEAR;
+	blit_info.regionCount = 1;
+	blit_info.pRegions = &blit_region;
+
+	vkCmdBlitImage2(cmd_buffer, &blit_info);
+}
+
+void VulkanImage::TransitionLayout(const VkCommandBuffer& cmd_buffer, const VkImage& image, const VkImageLayout& src, const VkImageLayout& dst)
+{
+	VkImageMemoryBarrier2 barrier{};
+	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+	barrier.pNext = nullptr;
+
+	// This is a bit general, and not at all optimal. Future TODO: Allow custom masks
+	barrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+	barrier.srcAccessMask = VK_ACCESS_2_MEMORY_READ_BIT;
+	barrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+	barrier.dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT;
+
+	// Transition from old to new layout
+	barrier.oldLayout = src;
+	barrier.newLayout = dst;
+
+	// Create Image Subresource Range with aspect mask
+	VkImageSubresourceRange sub_image{};
+	sub_image.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	sub_image.baseMipLevel = 0;
+	sub_image.levelCount = VK_REMAINING_MIP_LEVELS;
+	sub_image.baseArrayLayer = 0;
+	sub_image.layerCount = VK_REMAINING_ARRAY_LAYERS;
+
+	// Create aspect mask
+	barrier.subresourceRange = sub_image;
+	barrier.image = image;
+
+	// Dependency struct
+	VkDependencyInfo dep_info{};
+	dep_info.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+	dep_info.pNext = nullptr;
+
+	// Attach image barrier
+	dep_info.imageMemoryBarrierCount = 1;
+	dep_info.pImageMemoryBarriers = &barrier;
+
+	vkCmdPipelineBarrier2(cmd_buffer, &dep_info);
+}
