@@ -1,69 +1,7 @@
-#include <iostream>
-
-import Aurion.Application;
-
-class Sandbox : public Aurion::IApplication
-{
-public:
-	Sandbox();
-	virtual ~Sandbox() override;
-
-	void Load();
-
-	void Start();
-
-	void Update();
-
-	void Unload();
-
-	// Inherited via IApplication
-	void StartAndRun() override;
-};
-
-Sandbox::Sandbox()
-{
-	
-}
-
-Sandbox::~Sandbox()
-{
-
-}
-
-void Sandbox::StartAndRun()
-{
-	Load();
-	Start();
-	Update();
-	Unload();
-}
-
-void Sandbox::Load()
-{
-
-}
-
-void Sandbox::Start()
-{
-	std::cout << "Hello World" << std::endl;
-}
-
-void Sandbox::Update()
-{
-	
-}
-
-void Sandbox::Unload()
-{
-
-}
+import TerrainGenerator;
 
 int main()
 {
-	Aurion::IApplication* app = new Sandbox();
-	app->StartAndRun();
-
-	delete app;
-
-	return 0;
+	TerrainGenerator terrain_generator;
+	terrain_generator.StartAndRun();
 }
