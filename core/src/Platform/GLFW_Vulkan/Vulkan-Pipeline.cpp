@@ -211,13 +211,20 @@ VulkanPipelineBuilder::Result VulkanPipelineBuilder::Build()
 		}
 	}
 
+	VkResult result;
+
 	// Batch generate all compute pipelines
 	if (compute_creates.size() > 0)
-		vkCreateComputePipelines(m_logical_device->handle, VK_NULL_HANDLE, static_cast<uint32_t>(compute_creates.size()), compute_creates.data(), nullptr, compute_pipeline_refs.data());
+		result = vkCreateComputePipelines(m_logical_device->handle, VK_NULL_HANDLE, static_cast<uint32_t>(compute_creates.size()), compute_creates.data(), nullptr, compute_pipeline_refs.data());
 
 	// Batch generate all graphics pipelines
 	if (graphics_creates.size() > 0)
-		vkCreateGraphicsPipelines(m_logical_device->handle, VK_NULL_HANDLE, static_cast<uint32_t>(graphics_creates.size()), graphics_creates.data(), nullptr, graphics_pipeline_refs.data());
+		result = vkCreateGraphicsPipelines(m_logical_device->handle, VK_NULL_HANDLE, static_cast<uint32_t>(graphics_creates.size()), graphics_creates.data(), nullptr, graphics_pipeline_refs.data());
+
+	if (result != VK_SUCCESS)
+	{
+		AURION_ERROR("[Vulkan Pipeline Builder] Failed to build pipelines!");
+	}
 
 	// Batch generate all ray tracing pipelines (Requires Vulkan Extension)
 	//if (raytracing_creates.size() > 0)

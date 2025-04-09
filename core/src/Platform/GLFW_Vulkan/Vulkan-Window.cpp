@@ -3,6 +3,7 @@
 #include <set>
 #include <functional>
 #include <algorithm>
+#include <chrono>
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -98,11 +99,6 @@ void VulkanWindow::Attach(const Aurion::WindowHandle& handle)
 
 		_this->RecreateSwapchain();
 
-		return;
-
-		_this->SubmitRenderCommandImmediate([_this](const VkCommandBuffer& cmd_buffer) {
-			_this->CopyImageToSwapchain(cmd_buffer, _this->m_cached_image.image, _this->m_cached_image.extent);
-		});
 	});
 
 	m_attached = true;
@@ -188,49 +184,6 @@ void VulkanWindow::Attach(const Aurion::WindowHandle& handle, VulkanDevice* logi
 	// Trigger a swapchain creation
 	RecreateSwapchain();
 
-	// Setup immediate commands
-	if (false)
-	{
-		VkCommandPoolCreateInfo pool_info{};
-		pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-		pool_info.pNext = nullptr;
-		pool_info.flags = 0;
-
-		// Immediate Command Pool (with graphics queue)
-		pool_info.queueFamilyIndex = m_logical_device->graphics_queue_index.value();
-		if (vkCreateCommandPool(m_logical_device->handle, &pool_info, nullptr, &m_immediate_cmd_pool) != VK_SUCCESS)
-		{
-			AURION_ERROR("[VulkanWindow] Frame %d: Failed to create immediate command pool!");
-			return;
-		}
-
-		VkCommandBufferAllocateInfo buffer_info{};
-		buffer_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-		buffer_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-		buffer_info.commandBufferCount = 1;
-		buffer_info.pNext = nullptr;
-
-		// Immediate Command Buffer
-		buffer_info.commandPool = m_immediate_cmd_pool;
-		if (vkAllocateCommandBuffers(m_logical_device->handle, &buffer_info, &m_immediate_cmd_buffer) != VK_SUCCESS)
-		{
-			AURION_ERROR("[VulkanWindow] Frame %d: Failed to create immediate command buffer!");
-			return;
-		}
-
-		VkFenceCreateInfo fence_info{};
-		fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-		fence_info.pNext = nullptr;
-		fence_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-
-		// Immediate Fence
-		if (vkCreateFence(m_logical_device->handle, &fence_info, nullptr, &m_immediate_fence) != VK_SUCCESS)
-		{
-			AURION_ERROR("[VulkanWindow] Frame %d: Failed to create immediate fence!");
-			return;
-		}
-	}
-
 	// Setup ImGui for this window
 	m_imgui_context = ImGui::CreateContext();
 	ImGui::SetCurrentContext(m_imgui_context);
@@ -264,46 +217,14 @@ bool VulkanWindow::OnRender()
 	// Begin command buffer recording
 	this->Begin(frame);
 
-	// Transition the render image into general layout
-	{
-		VkImageMemoryBarrier2 barrier{};
-		barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
-		barrier.pNext = nullptr;
+	VulkanImage::TransitionLayout(
+		frame.graphics_cmd_buffer,
+		frame.image.image,
+		VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_IMAGE_LAYOUT_GENERAL
+	);
 
-		// Set barrier masks
-		barrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-		barrier.srcAccessMask = VK_ACCESS_2_MEMORY_READ_BIT;
-		barrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-		barrier.dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT;
-
-		// Transition from old to new layout
-		barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-		barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
-
-		// Create Image Subresource Range with aspect mask
-		VkImageSubresourceRange sub_image{};
-		sub_image.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		sub_image.baseMipLevel = 0;
-		sub_image.levelCount = VK_REMAINING_MIP_LEVELS;
-		sub_image.baseArrayLayer = 0;
-		sub_image.layerCount = VK_REMAINING_ARRAY_LAYERS;
-
-		// Create aspect mask
-		barrier.subresourceRange = sub_image;
-		barrier.image = frame.image.image;
-
-		// Dependency struct
-		VkDependencyInfo dep_info{};
-		dep_info.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-		dep_info.pNext = nullptr;
-
-		// Attach image barrier
-		dep_info.imageMemoryBarrierCount = 1;
-		dep_info.pImageMemoryBarriers = &barrier;
-
-		vkCmdPipelineBarrier2(frame.graphics_cmd_buffer, &dep_info);
-	}
-
+	// Record all commands
 	this->Record(frame);
 
 	// If we want to render the image as a UI texture, do so in OnUIRender
@@ -341,7 +262,7 @@ bool VulkanWindow::OnUIRender()
 	VulkanImage::TransitionLayout(
 		frame.graphics_cmd_buffer,
 		m_surface.swapchain.images[m_surface.swapchain.current_image_index],
-		VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 		VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
 	);
 
@@ -490,45 +411,6 @@ void VulkanWindow::SubmitAndPresent(const VulkanFrame& frame)
 		// Submit Compute Queue
 		vkQueueSubmit2(m_logical_device->compute_queue, 1, &compute_submit_info, frame.compute_fence);
 	}
-	
-	// Cache the image
-	if (false)
-	{
-		// Recreate, if needed
-		if (m_cached_image.extent.width != frame.image.extent.width ||
-			m_cached_image.extent.height != frame.image.extent.height ||
-			m_cached_image.extent.depth != frame.image.extent.depth)
-		{
-			// Cleanup cached image
-			vkDestroySampler(m_logical_device->handle, m_cached_image.sampler, nullptr);
-			vkDestroyImageView(m_logical_device->handle, m_cached_image.view, nullptr);
-			vmaDestroyImage(m_logical_device->allocator, m_cached_image.image, m_cached_image.allocation);
-
-			VulkanImageCreateInfo create_info{};
-			create_info.extent = VkExtent3D{
-				.width = m_surface.swapchain.extent.width,
-				.height = m_surface.swapchain.extent.height,
-				.depth = 1
-			};
-
-			// Ensure each image matches the swapchain format
-			create_info.format = m_surface.swapchain.format.format;
-
-			create_info.usage_flags |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-			create_info.usage_flags |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-			create_info.usage_flags |= VK_IMAGE_USAGE_STORAGE_BIT;
-			create_info.usage_flags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-			create_info.usage_flags |= VK_IMAGE_USAGE_SAMPLED_BIT;
-
-			create_info.aspect_flags = VK_IMAGE_ASPECT_COLOR_BIT;
-
-			m_cached_image = VulkanImage::Create(m_logical_device->handle, m_logical_device->allocator, create_info);
-		}
-
-		this->SubmitRenderCommandImmediate([&](const VkCommandBuffer& cmd_buffer) {
-			VulkanImage::Blit(cmd_buffer, frame.image.image, m_cached_image.image, frame.image.extent, m_cached_image.extent);
-		});
-	}
 
 	// Wait on graphics and comput queues to finish before presenting
 	std::vector<VkSemaphore> wait_semaphores = { frame.graphics_semaphore, frame.compute_semaphore };
@@ -564,16 +446,40 @@ void VulkanWindow::CopyImageToSwapchain(const VkCommandBuffer& cmd_buffer, const
 	);
 
 	// Copy frame image to swapchain image
-	VulkanImage::Blit(
-		cmd_buffer,
-		image,
-		m_surface.swapchain.images[m_surface.swapchain.current_image_index],
-		extent,
-		VkExtent3D{
-			.width = m_surface.swapchain.extent.width,
-			.height = m_surface.swapchain.extent.height,
-		}
-	);
+	VkImageCopy2 region{
+			.sType = VK_STRUCTURE_TYPE_IMAGE_COPY_2,
+			.srcSubresource = {
+				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+				.mipLevel = 0,
+				.baseArrayLayer = 0,
+				.layerCount = 1
+			},
+			.srcOffset = { 0, 0, 0 },
+			.dstSubresource = {
+				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+				.mipLevel = 0,
+				.baseArrayLayer = 0,
+				.layerCount = 1
+			},
+			.dstOffset = { 0, 0, 0 },
+			.extent = {
+				.width = extent.width,
+				.height = extent.height,
+				.depth = 1
+			}
+	};
+
+	VkCopyImageInfo2 copy_info{
+		.sType = VK_STRUCTURE_TYPE_COPY_IMAGE_INFO_2,
+		.srcImage = image,
+		.srcImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+		.dstImage = m_surface.swapchain.images[m_surface.swapchain.current_image_index],
+		.dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+		.regionCount = 1,
+		.pRegions = &region
+	};
+
+	vkCmdCopyImage2(cmd_buffer, &copy_info);
 }
 
 void VulkanWindow::Enable()
@@ -1027,36 +933,4 @@ void VulkanWindow::BindRenderCommand(const std::function<void(const VulkanComman
 void VulkanWindow::SubmitRenderCommand(const std::function<void(const VulkanCommand&)>& command)
 {
 	m_submit_commands.emplace_back(command);
-}
-
-void VulkanWindow::SubmitRenderCommandImmediate(const std::function<void(const VkCommandBuffer&)>& command)
-{
-	// Reset Fences
-	vkResetFences(m_logical_device->handle, 1, &m_immediate_fence);
-
-	// Opt for command buffer re-use
-	vkResetCommandPool(m_logical_device->handle, m_immediate_cmd_pool, VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT);
-	vkResetCommandBuffer(m_immediate_cmd_buffer, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-
-	VkCommandBufferBeginInfo begin_info{
-		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-		.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-	};
-
-	vkBeginCommandBuffer(m_immediate_cmd_buffer, &begin_info);
-	command(m_immediate_cmd_buffer);
-	vkEndCommandBuffer(m_immediate_cmd_buffer);
-
-	VkCommandBufferSubmitInfo buffer_info{};
-	buffer_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
-	buffer_info.commandBuffer = m_immediate_cmd_buffer;
-
-	VkSubmitInfo2 submitInfo{};
-	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
-	submitInfo.commandBufferInfoCount = 1;
-	submitInfo.pCommandBufferInfos = &buffer_info;
-
-	vkQueueSubmit2(m_logical_device->graphics_queue, 1, &submitInfo, m_immediate_fence);
-
-	vkWaitForFences(m_logical_device->handle, 1, &m_immediate_fence, VK_TRUE, UINT64_MAX);
 }

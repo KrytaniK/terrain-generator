@@ -64,9 +64,6 @@ export
 		// Submits a render command for execution during the current frame.
 		void SubmitRenderCommand(const std::function<void(const VulkanCommand&)>& command);
 
-		// Submits a render command for immediate execution (outside of the current frame)
-		void SubmitRenderCommandImmediate(const std::function<void(const VkCommandBuffer&)>& command);
-
 	private:
 		void Reset(const VulkanFrame& frame);
 		void Begin(const VulkanFrame& frame);
@@ -85,12 +82,6 @@ export
 		ImGuiContext* m_imgui_context; // ImGuiContext for this window
 		std::function<void()> m_ui_render_fun;// UI Render Function
 		std::vector<VulkanFrame> m_frames;
-		VulkanImage m_cached_image;
-
-		// Commands
-		VkCommandPool m_immediate_cmd_pool;
-		VkCommandBuffer m_immediate_cmd_buffer;
-		VkFence m_immediate_fence;
 
 		std::vector<std::function<void(const VulkanCommand&)>> m_bound_commands;
 		std::vector<std::function<void(const VulkanCommand&)>> m_submit_commands;

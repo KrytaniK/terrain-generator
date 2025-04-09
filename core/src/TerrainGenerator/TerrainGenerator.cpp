@@ -2,6 +2,7 @@
 
 #include <functional>
 #include <cmath>
+#include <chrono>
 
 #include <GLFW/glfw3.h>
 
@@ -128,7 +129,6 @@ void TerrainGenerator::Start()
 
 	// Submit a single command to process the rendering for this window
 	m_renderer->BindCommand(main_window, std::bind(&TerrainGenerator::Render, this, std::placeholders::_1));
-
 }
 
 void TerrainGenerator::Run()
