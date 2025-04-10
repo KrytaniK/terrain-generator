@@ -7,6 +7,7 @@
 #include <GLFW/glfw3.h>
 
 #include <vulkan/vulkan.h>
+#include <vma/vk_mem_alloc.h>
 
 import TerrainGenerator;
 import Aurion.GLFW;
@@ -38,18 +39,83 @@ void TerrainGenerator::Load()
 
 	m_window_driver.Initialize(driver_config);
 
+	VulkanDriverConfiguration vk_driver_config{};
+	vk_driver_config.app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+	vk_driver_config.app_info.pApplicationName = "Terrain Generator";
+	vk_driver_config.app_info.pEngineName = "No Engine";
+	vk_driver_config.app_info.engineVersion = VK_MAKE_VERSION(1, 0, 0);
+	vk_driver_config.app_info.apiVersion = VK_MAKE_API_VERSION(0, 1, 4, 309);
+	vk_driver_config.enable_validation_layers = false;
+	vk_driver_config.enable_debug_messenger = false;
+	vk_driver_config.max_frames_in_flight = 3;
+	vk_driver_config.validation_layers = {
+		"VK_LAYER_KHRONOS_validation"
+	};
+
+	// Core Vulkan Features
+	VkPhysicalDeviceFeatures features{};
+	features.geometryShader = VK_TRUE;
+	features.tessellationShader = VK_TRUE;
+
+	// Vulkan 1.1 Features
+	VkPhysicalDeviceVulkan11Features features11{};
+	features11.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES;
+
+	// Vulkan 1.2 Features
+	VkPhysicalDeviceVulkan12Features features12{};
+	features12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+	features12.bufferDeviceAddress = VK_TRUE;
+	features12.descriptorIndexing = VK_TRUE;
+	features12.pNext = &features11;
+
+	// Vulkan 1.3 Features
+	VkPhysicalDeviceVulkan13Features features13{};
+	features13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+	features13.dynamicRendering = VK_TRUE;
+	features13.synchronization2 = VK_TRUE;
+	features13.pNext = &features12;
+
+	// Vulkan 1.4 Features
+	VkPhysicalDeviceVulkan14Features features14{};
+	features14.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES;
+	features14.pNext = &features13;
+
+	// Package core and new features
+	VkPhysicalDeviceFeatures2 deviceFeatures2{};
+	deviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+	deviceFeatures2.features = features;
+	deviceFeatures2.pNext = &features14;
+
+	// VMA Allocator Flags
+	VmaAllocatorCreateFlags allocator_flags = 0;
+
+	// Package features/properties/flags/extensions into device requirements
+	VulkanDeviceConfiguration vk_device_config{};
+	vk_device_config.features = deviceFeatures2;
+	vk_device_config.device_type = VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU; // Prefer dedicated GPU
+	vk_device_config.allocator_flags = allocator_flags;
+	vk_device_config.extensions = {
+		VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+		VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME,
+		VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME
+	};
+	vk_device_config.layers = vk_driver_config.validation_layers;
+
 	// Potentially load vulkan driver config from file
+	m_vulkan_driver.SetConfiguration(vk_driver_config);
+	m_vulkan_driver.SetDeviceConfiguration(vk_device_config);
 	m_vulkan_driver.Initialize();
 
 	m_renderer = (VulkanRenderer*)m_vulkan_driver.CreateRenderer();
 
 	// Setting up Hello Triangle
-	VulkanPipelineBuilder* builder = m_renderer->GetPipelineBuilder();
+	VulkanPipelineBuilder builder;
+	builder.Initialize(m_renderer->GetLogicalDevice(), m_renderer->GetVkPipelineBuffer());
 	
 	// Configuring the Graphics Pipeline
 	{
 		// Graphics Pipeline Configuration (Based On Vulkan Tutorial: https://vulkan-tutorial.com/ and the Vulkan Guide: https://vkguide.dev/)
-		builder->Configure(VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO)
+		builder.Configure(VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO)
 		.UseDynamicRendering()
 			.AddDynamicColorAttachmentFormat(VK_FORMAT_B8G8R8A8_UNORM)
 			.SetDynamicDepthAttachmentFormat(VK_FORMAT_D32_SFLOAT)
@@ -111,7 +177,7 @@ void TerrainGenerator::Load()
 	}
 
 	// Building all pipelines
-	m_render_pipelines = builder->Build();
+	m_render_pipelines = builder.Build();
 }
 
 void TerrainGenerator::Start()
@@ -125,24 +191,23 @@ void TerrainGenerator::Start()
 	Aurion::WindowHandle main_window = m_window_driver.InitWindow(window_config);
 
 	// Create a graphics context for that window
-	m_renderer->AddWindow(main_window);
+	VulkanContext* ctx = m_renderer->CreateContext(main_window);
 
 	// Submit a single command to process the rendering for this window
-	m_renderer->BindCommand(main_window, std::bind(&TerrainGenerator::Render, this, std::placeholders::_1));
+	ctx->BindRenderCommand(std::bind(&TerrainGenerator::Render, this, std::placeholders::_1));
 }
 
 void TerrainGenerator::Run()
 {
 	Aurion::WindowHandle main_window = m_window_driver.GetWindow("Terrain Generator");
+	VulkanContext* main_render_context = m_renderer->GetContext(main_window.id);
 
 	while (!m_should_close)
 	{
 		// Input Polling and Window Updates
 		main_window.window->Update();
 
-		// Render Frame
-		m_renderer->BeginFrame();
-		m_renderer->EndFrame();
+		main_render_context->RenderFrame();
 
 		// Close if the main window is no longer open
 		m_should_close = !main_window.window->IsOpen();
@@ -158,25 +223,7 @@ void TerrainGenerator::Render(const VulkanCommand& command)
 {
 	VulkanPipeline* pipeline = m_render_pipelines.graphics_pipelines[0];
 
-	// Draw background
-	float flash = std::abs(std::sin((static_cast<double>(command.current_frame)) / 120.f));
-	VkClearColorValue clear_value{
-		0.0f,
-		0.0f,
-		flash,
-		1.0f
-	};
-	VkImageSubresourceRange clear_range{};
-	clear_range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	clear_range.baseMipLevel = 0;
-	clear_range.levelCount = VK_REMAINING_MIP_LEVELS;
-	clear_range.baseArrayLayer = 0;
-	clear_range.layerCount = VK_REMAINING_ARRAY_LAYERS;
-
-	vkCmdClearColorImage(command.graphics_buffer, command.render_image, VK_IMAGE_LAYOUT_GENERAL, &clear_value, 1, &clear_range);
-
 	// Draw Triangle
-
 	VkRenderingAttachmentInfo color_attachment{
 		.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
 		.imageView = command.render_view,

@@ -6,7 +6,7 @@ export module Graphics:Renderer;
 
 import Aurion.Window;
 
-import :Window;
+import :Context;
 
 export
 {
@@ -15,17 +15,14 @@ export
 	public:
 		virtual ~IRenderer() = default;
 
-		virtual void BeginFrame() = 0;
-		virtual void EndFrame() = 0;
+		virtual void Initialize() = 0;
 
-		virtual bool AddWindow(const Aurion::WindowHandle& handle) = 0;
+		virtual void Render() = 0;
 
-		virtual void SetWindowEnabled(const Aurion::WindowHandle& handle, bool enabled) = 0;
+		virtual IGraphicsContext* CreateContext(const Aurion::WindowHandle& handle) = 0;
 
-		virtual IGraphicsWindow* GetGraphicsWindow(const Aurion::WindowHandle& handle) = 0;
-		virtual IGraphicsWindow* GetGraphicsWindow(const uint64_t& window_id) = 0;
+		virtual IGraphicsContext* GetContext(const uint64_t& handle) = 0;
 
-		virtual bool RemoveGraphicsWindow(const Aurion::WindowHandle& handle) = 0;
-		virtual bool RemoveGraphicsWindow(const uint64_t& window_id) = 0;
+		virtual bool RemoveContext(const uint64_t& handle) = 0;
 	};
 }

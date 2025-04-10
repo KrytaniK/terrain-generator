@@ -1,8 +1,9 @@
 #include <macros/AurionLog.h>
 
 #include <cstdint>
-#include <utility>
-#include <unordered_map>
+#include <vector>
+#include <queue>
+#include <span>
 
 #include <vulkan/vulkan.h>
 #include <vma/vk_mem_alloc.h>
@@ -10,33 +11,12 @@
 import Vulkan;
 
 VulkanRenderer::VulkanRenderer()
-	: m_max_in_flight_frames(3)
+	: m_max_in_flight_frames(1)
 {
 	
 }
 
 VulkanRenderer::~VulkanRenderer()
-{
-	this->Shutdown();
-}
-
-void VulkanRenderer::Init(const VkInstance& vk_instance, const VulkanDeviceRequirements& logical_device_reqs, const uint32_t& max_in_flight_frames)
-{
-	if (m_logical_device.vk_instance != VK_NULL_HANDLE)
-	{
-		AURION_WARN("[Vulkan Renderer] Attempt to initialize after initialization!");
-		return;
-	}
-
-	m_max_in_flight_frames = max_in_flight_frames;
-
-	m_logical_device = VulkanDevice::Create(vk_instance, logical_device_reqs);
-
-	// Initialize pipeline builder
-	m_pipeline_builder.Initialize(&m_logical_device, m_pipelines);
-}
-
-void VulkanRenderer::Shutdown()
 {
 	// No need to destroy vulkan resources if vulkan was never initialized
 	if (m_logical_device.vk_instance == VK_NULL_HANDLE)
@@ -63,11 +43,10 @@ void VulkanRenderer::Shutdown()
 		// Clean up pipeline handle
 		vkDestroyPipeline(m_logical_device.handle, pipeline.handle, nullptr);
 	}
-	m_pipeline_builder.Cleanup();
 
 	// Ensure all window resources have been cleaned up BEFORE the logical
 	//	device is destroyed
-	m_windows.clear();
+	m_contexts.clear();
 
 	// Destroy VMA allocator
 	vmaDestroyAllocator(m_logical_device.allocator);
@@ -76,121 +55,92 @@ void VulkanRenderer::Shutdown()
 	vkDestroyDevice(m_logical_device.handle, nullptr);
 }
 
-void VulkanRenderer::BeginFrame()
+void VulkanRenderer::Initialize()
 {
-	// If rendering fails for whatever reason, remove the
-	//	graphics window.
-	for (auto& [id, window] : m_windows)
-		if (!window.OnRender())
-			m_windows_to_remove.emplace(id);
+	m_logical_device = VulkanDevice::Create(m_vk_instance, *m_config);
 }
 
-void VulkanRenderer::EndFrame()
+void VulkanRenderer::Render()
 {
-	// If rendering fails for whatever reason, remove the
-	//	graphics window.
-	for (auto& [id, window] : m_windows)
-		if (!window.OnUIRender())
-			m_windows_to_remove.emplace(id);
+	for (size_t i = 0; i < m_contexts.size(); i++)
+		if (!m_contexts[i].RenderFrame())
+			m_remove_queue.push(i);
 
-	// At the end of the frame, remove any windows that
-	//	have become invalidated
-	for (const uint64_t& id : m_windows_to_remove)
-		this->RemoveGraphicsWindow(id);
-}
-
-bool VulkanRenderer::AddWindow(const Aurion::WindowHandle& handle)
-{
-	if (m_windows.contains(handle.id))
-		return false;
-
-	// Emplace the new Graphics Window, and attach the
-	//	window and logical device
-	auto it = m_windows.emplace(handle.id, VulkanWindow());
-	it.first->second.Attach(handle, &m_logical_device);
-	it.first->second.SetMaxFramesInFlight(m_max_in_flight_frames);
-
-	return true;
-}
-
-void VulkanRenderer::SetWindowEnabled(const Aurion::WindowHandle& handle, bool enabled)
-{
-	if (!m_windows.contains(handle.id))
-		return;
-
-	if (enabled)
-		m_windows.at(handle.id).Enable();
-	else
-		m_windows.at(handle.id).Disable();
-}
-
-VulkanWindow* VulkanRenderer::GetGraphicsWindow(const Aurion::WindowHandle& handle)
-{
-	if (!m_windows.contains(handle.id))
-		return nullptr;
-
-	return &m_windows.at(handle.id);
-}
-
-VulkanWindow* VulkanRenderer::GetGraphicsWindow(const uint64_t& window_id)
-{
-	if (!m_windows.contains(window_id))
-		return nullptr;
-
-	return &m_windows.at(window_id);
-}
-
-bool VulkanRenderer::RemoveGraphicsWindow(const Aurion::WindowHandle& handle)
-{
-	if (!m_windows.contains(handle.id))
-		return false;
-
-	m_windows.erase(handle.id);
-	return true;
-}
-
-bool VulkanRenderer::RemoveGraphicsWindow(const uint64_t& window_id)
-{
-	if (!m_windows.contains(window_id))
-		return false;
-
-	m_windows.erase(window_id);
-	return true;
-}
-
-VulkanPipelineBuilder* VulkanRenderer::GetPipelineBuilder()
-{
-	return &m_pipeline_builder;
-}
-
-void VulkanRenderer::BindCommand(const Aurion::WindowHandle& window_handle, const std::function<void(const VulkanCommand&)>& command)
-{
-	// Get the graphics window
-	VulkanWindow* window = this->GetGraphicsWindow(window_handle);
-
-	// Bail if the window wasn't found
-	if (!window)
+	while (!m_remove_queue.empty())
 	{
-		AURION_ERROR("[Vulkan Renderer] Failed to submit render command: Window with id %d does not exist", window_handle.id);
+		m_contexts.erase(m_contexts.begin() + m_remove_queue.front());
+		m_remove_queue.pop();
+	}
+}
+
+VulkanContext* VulkanRenderer::CreateContext(const Aurion::WindowHandle& handle)
+{
+	// Ensure a context for this handle doesn't already exist
+	for (size_t i = 0; i < m_contexts.size(); i++)
+	{
+		if (m_contexts[i].GetContextID() == handle.id)
+		{
+			AURION_ERROR("[Vulkan Renderer] Failed to create context for window with id [%d]: Context already exists!", handle.id);
+			return nullptr;
+		}
+	}
+
+	m_contexts.emplace_back(VulkanContext());
+	m_contexts.back().SetLogicalDevice(&m_logical_device);
+	m_contexts.back().SetMaxInFlightFrames(m_max_in_flight_frames);
+	m_contexts.back().SetWindow(handle);
+	m_contexts.back().Initialize();
+
+	return &m_contexts.back();
+}
+
+VulkanContext* VulkanRenderer::GetContext(const uint64_t& id)
+{
+	// Ensure a context for this handle doesn't already exist
+	for (size_t i = 0; i < m_contexts.size(); i++)
+		if (m_contexts[i].GetContextID() == id)
+			return &m_contexts[i];
+
+	AURION_ERROR("[Vulkan Renderer] Failed to get context for window with id [%d]: Context does not exist!", id);
+	return nullptr;
+}
+
+bool VulkanRenderer::RemoveContext(const uint64_t& id)
+{
+	size_t remove_index = -1;
+
+	// Ensure a context for this handle doesn't already exist
+	for (size_t i = 0; i < m_contexts.size(); i++)
+		if (m_contexts[i].GetContextID() == id)
+			return remove_index = i;
+	
+	// Return false if not found
+	if (remove_index == -1)
+		return false;
+
+	m_contexts.erase(m_contexts.begin() + remove_index);
+	return true;
+}
+
+void VulkanRenderer::SetConfiguration(const VkInstance& vk_instance, const VulkanDeviceConfiguration* device_config, const uint32_t& max_in_flight_frames)
+{
+	if (m_logical_device.vk_instance != VK_NULL_HANDLE)
+	{
+		AURION_WARN("[Vulkan Renderer] Attempt to initialize after initialization!");
 		return;
 	}
 
-	// Submit the command to the window's command buffer
-	window->BindRenderCommand(command);
+	m_vk_instance = vk_instance;
+	m_config = device_config;
+	m_max_in_flight_frames = max_in_flight_frames;
 }
 
-void VulkanRenderer::SubmitCommand(const Aurion::WindowHandle& window_handle, const std::function<void(const VulkanCommand&)>& command)
+std::vector<VulkanPipeline>& VulkanRenderer::GetVkPipelineBuffer()
 {
-	// Get the graphics window
-	VulkanWindow* window = this->GetGraphicsWindow(window_handle);
+	return m_pipelines;
+}
 
-	// Bail if the window wasn't found
-	if (!window)
-	{
-		AURION_ERROR("[Vulkan Renderer] Failed to submit render command: Window with id %d does not exist", window_handle.id);
-		return;
-	}
-
-	// Submit the command to the window's command buffer
-	window->SubmitRenderCommand(command);
+VulkanDevice* VulkanRenderer::GetLogicalDevice()
+{
+	return &m_logical_device;
 }

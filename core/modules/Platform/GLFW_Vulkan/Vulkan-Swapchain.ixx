@@ -24,7 +24,6 @@ export
 		VkSurfaceFormatKHR format{};
 		VkPresentModeKHR present_mode = VK_PRESENT_MODE_MAX_ENUM_KHR;
 		std::vector<VkImage> images;
-		std::vector<VkImageView> image_views;
 		uint32_t current_image_index = 0;
 	};
 }

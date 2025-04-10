@@ -9,7 +9,7 @@
 
 import Vulkan;
 
-VulkanDevice VulkanDevice::Create(const VkInstance& instance, const VulkanDeviceRequirements& reqs)
+VulkanDevice VulkanDevice::Create(const VkInstance& instance, const VulkanDeviceConfiguration& reqs)
 {
 	VulkanDevice device;
 
@@ -185,7 +185,7 @@ VulkanDevice VulkanDevice::Create(const VkInstance& instance, const VulkanDevice
 	return std::move(device);
 }
 
-bool VulkanDevice::MeetsRequirements(const VkPhysicalDevice& physical_device, const VulkanDeviceRequirements& reqs)
+bool VulkanDevice::MeetsRequirements(const VkPhysicalDevice& physical_device, const VulkanDeviceConfiguration& reqs)
 {
 	// Check physical device properties
 	VkPhysicalDeviceProperties2 device_props{};

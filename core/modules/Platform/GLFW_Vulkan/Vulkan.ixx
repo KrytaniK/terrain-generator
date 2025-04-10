@@ -7,7 +7,7 @@ export import :Renderer;
 export import :Device;
 export import :Pipeline;
 
-export import :Window;
+export import :Context;
 export import :Swapchain;
 export import :Frame;
 export import :Image;
