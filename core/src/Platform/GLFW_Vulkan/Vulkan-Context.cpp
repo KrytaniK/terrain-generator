@@ -24,7 +24,7 @@ import Vulkan;
 import Aurion.Window;
 
 VulkanContext::VulkanContext()
-	: m_handle({}), m_max_frames_in_flight(0), m_enabled(true)
+	: m_handle({}), m_max_frames_in_flight(0), m_current_frame(0), m_enabled(true)
 {
 }
 

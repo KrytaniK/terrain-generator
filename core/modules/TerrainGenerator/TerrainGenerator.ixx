@@ -1,3 +1,7 @@
+module;
+
+#include <span>
+
 export module TerrainGenerator;
 
 import Aurion.Application;
@@ -27,7 +31,7 @@ export
 		Aurion::GLFWDriver m_window_driver;
 		VulkanDriver m_vulkan_driver;
 		VulkanRenderer* m_renderer;
-		VulkanPipelineBuilder::Result m_render_pipelines;
+		std::span<VulkanPipeline> m_render_pipelines;
 		bool m_should_close;
 	};
 }

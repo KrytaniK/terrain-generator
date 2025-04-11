@@ -30,10 +30,6 @@ VulkanRenderer::~VulkanRenderer()
 	{
 		VulkanPipeline& pipeline = m_pipelines[i];
 
-		// Cleanup all descriptor pools
-		for (size_t j = 0; j < pipeline.descriptor_pools.size(); j++)
-			vkDestroyDescriptorPool(m_logical_device.handle, pipeline.descriptor_pools[i], nullptr);
-
 		// Clean up render pass
 		vkDestroyRenderPass(m_logical_device.handle, pipeline.render_pass, nullptr);
 

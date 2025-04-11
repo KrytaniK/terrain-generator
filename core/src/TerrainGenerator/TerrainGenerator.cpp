@@ -1,8 +1,7 @@
 #include <macros/AurionLog.h>
 
 #include <functional>
-#include <cmath>
-#include <chrono>
+#include <span>
 
 #include <GLFW/glfw3.h>
 
@@ -45,8 +44,8 @@ void TerrainGenerator::Load()
 	vk_driver_config.app_info.pEngineName = "No Engine";
 	vk_driver_config.app_info.engineVersion = VK_MAKE_VERSION(1, 0, 0);
 	vk_driver_config.app_info.apiVersion = VK_MAKE_API_VERSION(0, 1, 4, 309);
-	vk_driver_config.enable_validation_layers = false;
-	vk_driver_config.enable_debug_messenger = false;
+	vk_driver_config.enable_validation_layers = true;
+	vk_driver_config.enable_debug_messenger = true;
 	vk_driver_config.max_frames_in_flight = 3;
 	vk_driver_config.validation_layers = {
 		"VK_LAYER_KHRONOS_validation"
@@ -108,76 +107,50 @@ void TerrainGenerator::Load()
 
 	m_renderer = (VulkanRenderer*)m_vulkan_driver.CreateRenderer();
 
-	// Setting up Hello Triangle
-	VulkanPipelineBuilder builder;
-	builder.Initialize(m_renderer->GetLogicalDevice(), m_renderer->GetVkPipelineBuffer());
-	
-	// Configuring the Graphics Pipeline
-	{
-		// Graphics Pipeline Configuration (Based On Vulkan Tutorial: https://vulkan-tutorial.com/ and the Vulkan Guide: https://vkguide.dev/)
-		builder.Configure(VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO)
-		.UseDynamicRendering()
-			.AddDynamicColorAttachmentFormat(VK_FORMAT_B8G8R8A8_UNORM)
-			.SetDynamicDepthAttachmentFormat(VK_FORMAT_D32_SFLOAT)
-			.SetDynamicStencilAttachmentFormat(VK_FORMAT_UNDEFINED)
-		.BindShader(VK_SHADER_STAGE_VERTEX_BIT, 0, "assets/shaders/vert-shader.vert", false)
-		.BindShader(VK_SHADER_STAGE_FRAGMENT_BIT, 0, "assets/shaders/frag-shader.frag", false)
-		.ConfigurePipelineLayout() // Pipeline Layout
-			// Currently Unused
-		.BuildPipelineLayout()
-		.ConfigureVertexInputState() // Vertex Input State
-			// None for now
-		.BuildVertexInputState()
-		.ConfigureInputAssemblyState() // Input Assembly State
+	VulkanPipelineFactory pipeline_factory;
+	pipeline_factory.Initialize(m_renderer->GetLogicalDevice(), m_renderer->GetVkPipelineBuffer());
+
+	pipeline_factory.Configure<VulkanGraphicsPipeline>()
+		.BindShader(Vulkan::CreatePipelineShader(m_renderer->GetLogicalDevice(), VK_SHADER_STAGE_VERTEX_BIT, 0, "assets/shaders/vert-shader.vert", false))
+		.BindShader(Vulkan::CreatePipelineShader(m_renderer->GetLogicalDevice(), VK_SHADER_STAGE_FRAGMENT_BIT, 0, "assets/shaders/frag-shader.frag", false))
+		.ConfigureVertexInputState()
+		.ConfigureInputAssemblyState()
 			.SetPrimitiveTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
-			.SetPrimitiveRestartEnable(VK_FALSE)
-		.ConfigureTessellationState() // Tessellation State
+		.ConfigureRasterizationState()
+			.SetPolygonMode(VK_POLYGON_MODE_FILL)
+			.SetCullMode(VK_CULL_MODE_BACK_BIT)
+			.SetFrontFace(VK_FRONT_FACE_CLOCKWISE)
+			.SetLineWidth(1.0f)
+		.ConfigureColorBlendState()
+			.SetLogicOpEnabled(VK_FALSE)
+			.SetBlendConstants(0.f, 0.f, 0.f, 0.f)
+			.AddColorAttachment()
+				.SetBlendEnabled(VK_FALSE)
+				.SetSrcColorBlendFactor(VK_BLEND_FACTOR_ONE)
+				.SetDstColorBlendFactor(VK_BLEND_FACTOR_ZERO)
+				.SetColorBlendOp(VK_BLEND_OP_ADD)
+				.SetSrcAlphaBlendFactor(VK_BLEND_FACTOR_ONE)
+				.SetDstAlphaBlendFactor(VK_BLEND_FACTOR_ZERO)
+				.SetAlphaBlendOp(VK_BLEND_OP_ADD)
+				.SetColorWriteMask(VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT)
 		.ConfigureViewportState()
 			.AddViewport(VkViewport{})
 			.AddScissor(VkRect2D{})
-		.BuildViewportState()
-		.ConfigureRasterizationState() // Rasterization State
-			.SetDepthClampEnabled(VK_FALSE)
-			.SetRasterizerDiscardEnabled(VK_FALSE)
-			.SetPolygonMode(VK_POLYGON_MODE_FILL)
-			.SetLineWidth(1.0f)
-			.SetCullMode(VK_CULL_MODE_BACK_BIT)
-			.SetFrontFace(VK_FRONT_FACE_CLOCKWISE)
-			.SetDepthBiasEnabled(VK_FALSE)
-			.SetDepthBiasConstantFactor(0.0f)
-			.SetDepthBiasClamp(0.0f)
-			.SetDepthBiasSlopeFactor(0.0f)
-		.ConfigureMultisampleState() // MultisampleState
+		.ConfigureMultisampleState()
 			.SetSampleShadingEnabled(VK_FALSE)
 			.SetRasterizationSamples(VK_SAMPLE_COUNT_1_BIT)
 			.SetMinSampleShading(1.0f)
 			.SetAlphaToCoverageEnabled(VK_FALSE)
 			.SetAlphaToOneEnabled(VK_FALSE)
-		.BuildMultisampleState()
-		.ConfigureDepthStencilState() // Depth Stencil State
-			// Unused
-		.ConfigureColorBlendState() // Color Blend State
-			.AddColorAttachment()
-				.SetColorWriteMask(VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT)
-				.SetBlendEnabled(VK_FALSE)
-				.SetSrcColorBlendFactor(VK_BLEND_FACTOR_ONE)
-				.SetDstColorBlendFactor(VK_BLEND_FACTOR_ONE)
-				.SetColorBlendOp(VK_BLEND_OP_ADD)
-				.SetSrcAlphaBlendFactor(VK_BLEND_FACTOR_ONE)
-				.SetDstAlphaBlendFactor(VK_BLEND_FACTOR_ONE)
-				.SetAlphaBlendOp(VK_BLEND_OP_ADD)
-			.SetLogicOpEnabled(VK_FALSE)
-			.SetLogicOp(VK_LOGIC_OP_COPY)
-			.SetBlendConstants(0.0f, 0.0f, 0.0f, 0.0f)
-		.BuildColorBlendState()
-		.ConfigureDynamicState() // Dynamic State
+		.ConfigureDynamicState()
 			.AddDynamicState(VK_DYNAMIC_STATE_VIEWPORT)
 			.AddDynamicState(VK_DYNAMIC_STATE_SCISSOR)
-		.BuildDynamicState();
-	}
-
-	// Building all pipelines
-	m_render_pipelines = builder.Build();
+		.AddDynamicColorAttachmentFormat(VK_FORMAT_B8G8R8A8_UNORM)
+		.SetDynamicDepthAttachmentFormat(VK_FORMAT_UNDEFINED)
+		.SetDynamicStencilAttachmentFormat(VK_FORMAT_UNDEFINED)
+		.ConfigurePipelineLayout();
+	
+	m_render_pipelines = pipeline_factory.Build();
 }
 
 void TerrainGenerator::Start()
@@ -221,15 +194,25 @@ void TerrainGenerator::Unload()
 
 void TerrainGenerator::Render(const VulkanCommand& command)
 {
-	VulkanPipeline* pipeline = m_render_pipelines.graphics_pipelines[0];
+	VulkanPipeline& pipeline = m_render_pipelines[0];
+
+	VulkanImage::TransitionLayout(command.graphics_buffer, command.render_image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
 	// Draw Triangle
 	VkRenderingAttachmentInfo color_attachment{
 		.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
 		.imageView = command.render_view,
 		.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-		.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
-		.storeOp = VK_ATTACHMENT_STORE_OP_STORE
+		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+		.clearValue = VkClearValue{
+			.color = VkClearColorValue{
+				0.125f,
+				0.0f,
+				0.125f,
+				1.0f
+			}
+		}
 	};
 
 	VkRenderingInfo render_info{
@@ -245,14 +228,14 @@ void TerrainGenerator::Render(const VulkanCommand& command)
 
 	vkCmdBeginRendering(command.graphics_buffer, &render_info);
 
-	vkCmdBindPipeline(command.graphics_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->handle);
+	vkCmdBindPipeline(command.graphics_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.handle);
 
 	//set dynamic viewport and scissor
 	VkViewport viewport = {};
 	viewport.x = 0;
 	viewport.y = 0;
-	viewport.width = command.render_extent.width;
-	viewport.height = command.render_extent.height;
+	viewport.width = static_cast<float>(command.render_extent.width);
+	viewport.height = static_cast<float>(command.render_extent.height);
 	viewport.minDepth = 0.f;
 	viewport.maxDepth = 1.f;
 
@@ -270,4 +253,6 @@ void TerrainGenerator::Render(const VulkanCommand& command)
 	vkCmdDraw(command.graphics_buffer, 3, 1, 0, 0);
 
 	vkCmdEndRendering(command.graphics_buffer);
+
+	VulkanImage::TransitionLayout(command.graphics_buffer, command.render_image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL);
 }

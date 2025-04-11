@@ -6,6 +6,7 @@ export import :Debug;
 export import :Renderer;
 export import :Device;
 export import :Pipeline;
+export import :PipelineStrategies;
 
 export import :Context;
 export import :Swapchain;
@@ -13,3 +14,5 @@ export import :Frame;
 export import :Image;
 
 export import :Command;
+
+export import :Utility;
