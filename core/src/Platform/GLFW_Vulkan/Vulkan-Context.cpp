@@ -24,8 +24,9 @@ import Vulkan;
 import Aurion.Window;
 
 VulkanContext::VulkanContext()
-	: m_handle({}), m_max_frames_in_flight(0), m_current_frame(0), m_enabled(true)
+	: m_handle({}), m_max_frames_in_flight(0), m_current_frame(0), m_vsync_enabled(true), m_enabled(true)
 {
+
 }
 
 VulkanContext::~VulkanContext()
@@ -135,6 +136,17 @@ bool VulkanContext::IsEnabled()
 
 bool VulkanContext::SetVSyncEnabled(const bool& enabled)
 {
+	// Return if nothing changed
+	if (m_vsync_enabled == enabled)
+		return enabled;
+
+	// If v-sync is being toggled, the swapchain needs to be recreated
+	m_vsync_enabled = enabled;
+
+	// Always recreate for disabled VSync, but only recreate if present mode does not match for enabled VSync
+	if (!m_vsync_enabled || (m_vsync_enabled && m_surface.swapchain.present_mode != VK_PRESENT_MODE_FIFO_KHR))
+		this->CreateSwapchain(m_surface.swapchain.handle);
+
 	return m_vsync_enabled = enabled;
 }
 
@@ -197,11 +209,6 @@ bool VulkanContext::RenderFrame()
 		VK_IMAGE_LAYOUT_GENERAL
 	);
 
-	/*
-		RECORD RENDERING COMMANDS
-	*/
-
-	// TEMP: Bound command execution
 	if (m_bound_command)
 	{
 		m_bound_command(VulkanCommand{
@@ -362,6 +369,19 @@ bool VulkanContext::RenderFrame()
 	return true;
 }
 
+void VulkanContext::SetPresentMode(const VkPresentModeKHR& present_mode)
+{
+	// Don't override vsync
+	if (m_vsync_enabled && present_mode != VK_PRESENT_MODE_FIFO_KHR)
+		return;
+
+	// No need to recreate swapchain if the present mode matches
+	if (m_surface.swapchain.present_mode == present_mode)
+		return;
+
+	this->CreateSwapchain(m_surface.swapchain.handle, present_mode);
+}
+
 bool VulkanContext::QueryPresentationSupport()
 {
 	VkBool32 supported = VK_FALSE;
@@ -488,7 +508,7 @@ void VulkanContext::ChooseSwapchainFormat()
 	}
 }
 
-void VulkanContext::ChooseSwapchainPresentMode()
+void VulkanContext::ChooseSwapchainPresentMode(const VkPresentModeKHR& present_mode)
 {
 	// Default to the first available present mode
 	m_surface.swapchain.present_mode = m_surface.swapchain.support.present_modes[0];
@@ -496,7 +516,15 @@ void VulkanContext::ChooseSwapchainPresentMode()
 	// Prefer v-sync present mode for stability if enabled, 'unlimited' otherwise
 	for (const auto& mode : m_surface.swapchain.support.present_modes)
 	{
-		if ((m_vsync_enabled && mode == VK_PRESENT_MODE_FIFO_KHR) || mode == VK_PRESENT_MODE_MAILBOX_KHR)
+		// If a desired mode was found, set it and return
+		if (mode == present_mode)
+		{
+			m_surface.swapchain.present_mode = mode;
+			return;
+		}
+
+		// Otherwise, choose from FIFO (Vsync Enabled) or MAILBOX (Vsync Disabled)
+		if ((m_vsync_enabled && mode == VK_PRESENT_MODE_FIFO_KHR) || (!m_vsync_enabled && mode == VK_PRESENT_MODE_MAILBOX_KHR))
 			m_surface.swapchain.present_mode = mode;
 	}
 }
@@ -525,13 +553,13 @@ void VulkanContext::ChooseSwapchainExtent()
 	}
 }
 
-bool VulkanContext::CreateSwapchain(const VkSwapchainKHR old_swapchain)
+bool VulkanContext::CreateSwapchain(const VkSwapchainKHR old_swapchain, const VkPresentModeKHR& present_mode)
 {
 	if (!this->QuerySwapchainSupport())
 		return false;
 
 	this->ChooseSwapchainFormat();
-	this->ChooseSwapchainPresentMode();
+	this->ChooseSwapchainPresentMode(present_mode);
 	this->ChooseSwapchainExtent();
 
 	// Generate the swapchain

@@ -55,6 +55,8 @@ export
 
 		virtual bool RenderFrame() override;
 
+		void SetPresentMode(const VkPresentModeKHR& present_mode);
+
 		void SetLogicalDevice(VulkanDevice* device);
 
 		// Binds a render command for repeated calls.
@@ -65,10 +67,10 @@ export
 		bool QuerySwapchainSupport();
 
 		void ChooseSwapchainFormat();
-		void ChooseSwapchainPresentMode();
+		void ChooseSwapchainPresentMode(const VkPresentModeKHR& present_mode);
 		void ChooseSwapchainExtent();
 
-		bool CreateSwapchain(const VkSwapchainKHR old_swapchain = VK_NULL_HANDLE);
+		bool CreateSwapchain(const VkSwapchainKHR old_swapchain = VK_NULL_HANDLE, const VkPresentModeKHR& present_mode = VK_PRESENT_MODE_MAX_ENUM_KHR);
 
 		bool GenerateFrameData();
 

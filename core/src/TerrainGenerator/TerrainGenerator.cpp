@@ -3,10 +3,11 @@
 #include <functional>
 #include <span>
 
+#include <chrono>
+
 #include <GLFW/glfw3.h>
 
 #include <vulkan/vulkan.h>
-#include <vma/vk_mem_alloc.h>
 
 import TerrainGenerator;
 import Aurion.GLFW;
@@ -85,14 +86,11 @@ void TerrainGenerator::Load()
 	deviceFeatures2.features = features;
 	deviceFeatures2.pNext = &features14;
 
-	// VMA Allocator Flags
-	VmaAllocatorCreateFlags allocator_flags = 0;
-
 	// Package features/properties/flags/extensions into device requirements
 	VulkanDeviceConfiguration vk_device_config{};
 	vk_device_config.features = deviceFeatures2;
 	vk_device_config.device_type = VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU; // Prefer dedicated GPU
-	vk_device_config.allocator_flags = allocator_flags;
+	vk_device_config.allocator_flags = 0;
 	vk_device_config.extensions = {
 		VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 		VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME,
@@ -167,20 +165,21 @@ void TerrainGenerator::Start()
 	VulkanContext* ctx = m_renderer->CreateContext(main_window);
 
 	// Submit a single command to process the rendering for this window
-	ctx->BindRenderCommand(std::bind(&TerrainGenerator::Render, this, std::placeholders::_1));
+	//ctx->BindRenderCommand(std::bind(&TerrainGenerator::Render, this, std::placeholders::_1));
 }
 
 void TerrainGenerator::Run()
 {
 	Aurion::WindowHandle main_window = m_window_driver.GetWindow("Terrain Generator");
 	VulkanContext* main_render_context = m_renderer->GetContext(main_window.id);
-
+	//main_render_context->SetVSyncEnabled(true);
 	while (!m_should_close)
 	{
 		// Input Polling and Window Updates
 		main_window.window->Update();
 
-		main_render_context->RenderFrame();
+		// Render Commands
+		m_renderer->Render();
 
 		// Close if the main window is no longer open
 		m_should_close = !main_window.window->IsOpen();
@@ -196,14 +195,12 @@ void TerrainGenerator::Render(const VulkanCommand& command)
 {
 	VulkanPipeline& pipeline = m_render_pipelines[0];
 
-	VulkanImage::TransitionLayout(command.graphics_buffer, command.render_image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-
 	// Draw Triangle
 	VkRenderingAttachmentInfo color_attachment{
 		.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
 		.imageView = command.render_view,
 		.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+		.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
 		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
 		.clearValue = VkClearValue{
 			.color = VkClearColorValue{
@@ -253,6 +250,4 @@ void TerrainGenerator::Render(const VulkanCommand& command)
 	vkCmdDraw(command.graphics_buffer, 3, 1, 0, 0);
 
 	vkCmdEndRendering(command.graphics_buffer);
-
-	VulkanImage::TransitionLayout(command.graphics_buffer, command.render_image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL);
 }
