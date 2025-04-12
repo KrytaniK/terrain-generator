@@ -172,7 +172,7 @@ void TerrainGenerator::Run()
 {
 	Aurion::WindowHandle main_window = m_window_driver.GetWindow("Terrain Generator");
 	VulkanContext* main_render_context = m_renderer->GetContext(main_window.id);
-	//main_render_context->SetVSyncEnabled(true);
+
 	while (!m_should_close)
 	{
 		// Input Polling and Window Updates

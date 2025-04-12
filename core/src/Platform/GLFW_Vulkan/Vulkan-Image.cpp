@@ -1,3 +1,5 @@
+#include <vector>
+
 #include <vulkan/vulkan.h>
 #include <vma/vk_mem_alloc.h>
 
@@ -61,7 +63,7 @@ VulkanImage VulkanImage::Create(const VkDevice& logical_device, const VmaAllocat
 	samplerInfo.minFilter = VK_FILTER_LINEAR;
 	samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
 	samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT; // outside image bounds just use border color
-	samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT; 
 	samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
 	samplerInfo.minLod = -1000;
 	samplerInfo.maxLod = 1000;
@@ -72,7 +74,7 @@ VulkanImage VulkanImage::Create(const VkDevice& logical_device, const VmaAllocat
 	return out_image;
 }
 
-void VulkanImage::TransitionLayout(const VkCommandBuffer& cmd_buffer, const VkImage& image, const VkImageLayout& src, const VkImageLayout& dst)
+VkImageMemoryBarrier2 VulkanImage::CreateLayoutTransition(const VkImage& image, const VkImageLayout& src, const VkImageLayout& dst, const VkPipelineStageFlags2& src_stage, const VkPipelineStageFlags2& dst_stage, const VkAccessFlags2& src_access, const VkAccessFlags2& dst_access)
 {
 	VkImageMemoryBarrier2 barrier{};
 	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
@@ -108,6 +110,20 @@ void VulkanImage::TransitionLayout(const VkCommandBuffer& cmd_buffer, const VkIm
 	// Attach image barrier
 	dep_info.imageMemoryBarrierCount = 1;
 	dep_info.pImageMemoryBarriers = &barrier;
+
+	return barrier;
+}
+
+void VulkanImage::TransitionLayouts(const VkCommandBuffer& cmd_buffer, const std::vector<VkImageMemoryBarrier2>& barriers)
+{
+	// Dependency struct
+	VkDependencyInfo dep_info{};
+	dep_info.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+	dep_info.pNext = nullptr;
+
+	// Attach image barrier
+	dep_info.imageMemoryBarrierCount = static_cast<uint32_t>(barriers.size());
+	dep_info.pImageMemoryBarriers = barriers.data();
 
 	vkCmdPipelineBarrier2(cmd_buffer, &dep_info);
 }

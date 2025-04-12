@@ -201,13 +201,18 @@ bool VulkanContext::RenderFrame()
 	vkBeginCommandBuffer(frame.graphics_cmd_buffer, &begin_info);
 	vkBeginCommandBuffer(frame.compute_cmd_buffer, &begin_info);
 
-	// Transition render image back to general
-	VulkanImage::TransitionLayout(
-		frame.graphics_cmd_buffer,
-		frame.image.image,
-		VK_IMAGE_LAYOUT_UNDEFINED,
-		VK_IMAGE_LAYOUT_GENERAL
-	);
+	// Transition render image to a general layout for commands
+	VulkanImage::TransitionLayouts(frame.graphics_cmd_buffer, {
+		VulkanImage::CreateLayoutTransition(
+			frame.image.image,
+			VK_IMAGE_LAYOUT_UNDEFINED,
+			VK_IMAGE_LAYOUT_GENERAL,
+			VK_PIPELINE_STAGE_2_NONE,
+			VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+			0,
+			VK_ACCESS_2_SHADER_WRITE_BIT | VK_ACCESS_2_SHADER_READ_BIT
+		)
+	});
 
 	if (m_bound_command)
 	{
@@ -227,21 +232,28 @@ bool VulkanContext::RenderFrame()
 
 	// TODO: UI Rendering
 
-	// Transition render image to transfer source
-	VulkanImage::TransitionLayout(
-		frame.graphics_cmd_buffer,
-		frame.image.image,
-		VK_IMAGE_LAYOUT_GENERAL,
-		VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
-	);
-
-	// Transition swapchain Image Layout to transfer destination
-	VulkanImage::TransitionLayout(
-		frame.graphics_cmd_buffer,
-		m_surface.swapchain.images[m_surface.swapchain.current_image_index],
-		VK_IMAGE_LAYOUT_UNDEFINED,
-		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
-	);
+	// Get render image and swapchain in appropriate layouts for image
+	//	copy
+	VulkanImage::TransitionLayouts(frame.graphics_cmd_buffer, {
+		VulkanImage::CreateLayoutTransition(
+			frame.image.image,
+			VK_IMAGE_LAYOUT_GENERAL,
+			VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+			VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+			VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+			VK_ACCESS_2_SHADER_WRITE_BIT | VK_ACCESS_2_SHADER_READ_BIT,
+			VK_ACCESS_2_TRANSFER_READ_BIT
+		),
+		VulkanImage::CreateLayoutTransition(
+			m_surface.swapchain.images[m_surface.swapchain.current_image_index],
+			VK_IMAGE_LAYOUT_UNDEFINED,
+			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			VK_PIPELINE_STAGE_2_NONE,
+			VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+			0,
+			VK_ACCESS_2_SHADER_WRITE_BIT
+		)
+	});
 
 	// Copy frame image to swapchain image
 	VkImageCopy2 region{
@@ -279,21 +291,26 @@ bool VulkanContext::RenderFrame()
 
 	vkCmdCopyImage2(frame.graphics_cmd_buffer, &copy_info);
 
-	// Transition render image back to general
-	VulkanImage::TransitionLayout(
-		frame.graphics_cmd_buffer,
-		frame.image.image,
-		VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-		VK_IMAGE_LAYOUT_GENERAL
-	);
-
-	// Transition swapchain image to a writable layout for UI rendering
-	VulkanImage::TransitionLayout(
-		frame.graphics_cmd_buffer,
-		m_surface.swapchain.images[m_surface.swapchain.current_image_index],
-		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-		VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
-	);
+	VulkanImage::TransitionLayouts(frame.graphics_cmd_buffer, {
+		VulkanImage::CreateLayoutTransition(
+			frame.image.image,
+			VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+			VK_IMAGE_LAYOUT_GENERAL,
+			VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+			VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+			VK_ACCESS_2_TRANSFER_READ_BIT,
+			VK_ACCESS_2_SHADER_WRITE_BIT | VK_ACCESS_2_SHADER_READ_BIT
+		),
+		VulkanImage::CreateLayoutTransition(
+			m_surface.swapchain.images[m_surface.swapchain.current_image_index],
+			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+			VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+			VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT,
+			VK_ACCESS_2_TRANSFER_WRITE_BIT,
+			0
+		),
+	});
 
 	// End command buffer recording
 	vkEndCommandBuffer(frame.graphics_cmd_buffer);
@@ -340,11 +357,11 @@ bool VulkanContext::RenderFrame()
 		compute_submit_info.signalSemaphoreInfoCount = 1;
 		compute_submit_info.pSignalSemaphoreInfos = &compute_signal_semaphore_info;
 
-		// Submit Graphics Queue
-		vkQueueSubmit2(m_logical_device->graphics_queue, 1, &graphics_submit_info, frame.graphics_fence);
-
 		// Submit Compute Queue
 		vkQueueSubmit2(m_logical_device->compute_queue, 1, &compute_submit_info, frame.compute_fence);
+
+		// Submit Graphics Queue
+		vkQueueSubmit2(m_logical_device->graphics_queue, 1, &graphics_submit_info, frame.graphics_fence);
 	}
 
 	// Present Image
