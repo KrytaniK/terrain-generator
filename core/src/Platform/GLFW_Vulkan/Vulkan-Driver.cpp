@@ -70,8 +70,8 @@ IRenderer* VulkanDriver::CreateRenderer()
 		return nullptr;
 	}
 
-	// Create the renderer
-	m_renderers.emplace_back(VulkanRenderer());
+	// Create the renderer 
+	m_renderers.emplace_back();
 	VulkanRenderer& renderer = m_renderers.back();
 	
 	// Initialize a renderer with provided device and driver configurations

@@ -58,63 +58,52 @@ void VulkanRenderer::Initialize()
 
 void VulkanRenderer::Render()
 {
-	for (size_t i = 0; i < m_contexts.size(); i++)
-		if (!m_contexts[i].RenderFrame())
-			m_remove_queue.push(i);
+	for (auto& [id, context] : m_contexts)
+		if (!context.RenderFrame())
+			m_remove_queue.push(id);
 
 	while (!m_remove_queue.empty())
 	{
-		m_contexts.erase(m_contexts.begin() + m_remove_queue.front());
+		m_contexts.erase(m_remove_queue.front());
 		m_remove_queue.pop();
 	}
 }
 
 VulkanContext* VulkanRenderer::CreateContext(const Aurion::WindowHandle& handle)
 {
-	// Ensure a context for this handle doesn't already exist
-	for (size_t i = 0; i < m_contexts.size(); i++)
+	if (m_contexts.contains(handle.id))
 	{
-		if (m_contexts[i].GetContextID() == handle.id)
-		{
-			AURION_ERROR("[Vulkan Renderer] Failed to create context for window with id [%d]: Context already exists!", handle.id);
-			return nullptr;
-		}
+		AURION_ERROR("[Vulkan Renderer] Failed to create context for window with id [%d]: Context already exists!", handle.id);
+		return nullptr;
 	}
 
-	m_contexts.emplace_back();
-	m_contexts.back().SetLogicalDevice(&m_logical_device);
-	m_contexts.back().SetMaxInFlightFrames(m_max_in_flight_frames);
-	m_contexts.back().SetWindow(handle);
-	m_contexts.back().Initialize();
+	m_contexts.emplace(handle.id, std::move(VulkanContext()));
+	VulkanContext& context = m_contexts[handle.id];
+	context.SetLogicalDevice(&m_logical_device);
+	context.SetMaxInFlightFrames(m_max_in_flight_frames);
+	context.SetWindow(handle);
+	context.Initialize();
 
-	return &m_contexts.back();
+	return &context;
 }
 
 VulkanContext* VulkanRenderer::GetContext(const uint64_t& id)
 {
-	// Ensure a context for this handle doesn't already exist
-	for (size_t i = 0; i < m_contexts.size(); i++)
-		if (m_contexts[i].GetContextID() == id)
-			return &m_contexts[i];
+	if (!m_contexts.contains(id))
+	{
+		AURION_ERROR("[Vulkan Renderer] Failed to get context for window with id [%d]: Context does not exist!", id);
+		return nullptr;
+	}
 
-	AURION_ERROR("[Vulkan Renderer] Failed to get context for window with id [%d]: Context does not exist!", id);
-	return nullptr;
+	return &m_contexts[id];
 }
 
 bool VulkanRenderer::RemoveContext(const uint64_t& id)
 {
-	size_t remove_index = -1;
-
-	// Ensure a context for this handle doesn't already exist
-	for (size_t i = 0; i < m_contexts.size(); i++)
-		if (m_contexts[i].GetContextID() == id)
-			return remove_index = i;
-	
-	// Return false if not found
-	if (remove_index == -1)
+	if (!m_contexts.contains(id))
 		return false;
 
-	m_contexts.erase(m_contexts.begin() + remove_index);
+	m_contexts.erase(id);
 	return true;
 }
 

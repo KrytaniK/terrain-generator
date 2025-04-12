@@ -3,8 +3,7 @@ module;
 #include <optional>
 #include <cstdint>
 #include <vector>
-
-#include <functional>
+#include <memory>
 
 #include <vulkan/vulkan.h>
 #include <imgui.h>
@@ -37,6 +36,12 @@ export
 		VulkanContext();
 		virtual ~VulkanContext() override;
 
+		VulkanContext(const VulkanContext&) = delete;
+		VulkanContext& operator=(const VulkanContext&) = delete;
+
+		VulkanContext(VulkanContext&&) = default;
+		VulkanContext& operator=(VulkanContext&&) = default;
+
 		virtual uint64_t GetContextID() override;
 
 		void Initialize() override;
@@ -59,8 +64,21 @@ export
 
 		void SetLogicalDevice(VulkanDevice* device);
 
-		// Binds a render command for repeated calls.
-		void BindRenderCommand(const std::function<void(const VulkanCommand&)>& command);
+		template<typename T, typename... Args>
+		T* AddRenderLayer(Args&&... args)
+		{
+			static_assert(std::is_base_of_v<IRenderLayer, T>, "Layer must be derived from IRenderOverlay!");
+			this->m_render_layers.emplace_back(std::make_unique<T>(std::forward<Args>(args)...));
+			return (T*)this->m_render_layers.back().get();
+		};
+
+		template<typename T, typename... Args>
+		T* AddRenderOverlay(Args&&... args)
+		{
+			static_assert(std::is_base_of_v<IRenderOverlay, T>, "Overlay must be derived from IRenderOverlay!");
+			this->m_render_overlays.emplace_back(std::make_unique<T>(std::forward<Args>(args)...));
+			return (T*)this->m_render_overlays.back().get();
+		};
 
 	private:
 		bool QueryPresentationSupport();
@@ -85,7 +103,8 @@ export
 
 		std::vector<VulkanFrame> m_frames;
 
-		std::function<void(const VulkanCommand&)> m_bound_command;
+		std::vector<std::unique_ptr<IRenderLayer>> m_render_layers;
+		std::vector<std::unique_ptr<IRenderOverlay>> m_render_overlays;
 
 		size_t m_current_frame;
 		bool m_render_as_ui;

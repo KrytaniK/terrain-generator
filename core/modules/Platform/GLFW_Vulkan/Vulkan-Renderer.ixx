@@ -2,6 +2,7 @@ module;
 
 #include <cstdint>
 #include <vector>
+#include <unordered_map>
 #include <queue>
 
 #include <vulkan/vulkan.h>
@@ -23,6 +24,12 @@ export
 	public:
 		VulkanRenderer();
 		virtual ~VulkanRenderer() override;
+
+		VulkanRenderer(const VulkanRenderer&) = delete;
+		VulkanRenderer& operator=(const VulkanRenderer&) = delete;
+
+		VulkanRenderer(VulkanRenderer&&) = default;
+		VulkanRenderer& operator=(VulkanRenderer&&) = default;
 
 		virtual void Initialize() override;
 
@@ -46,7 +53,7 @@ export
 		VulkanDevice m_logical_device;
 		uint32_t m_max_in_flight_frames;
 		std::vector<VulkanPipeline> m_pipelines;
-		std::vector<VulkanContext> m_contexts;
+		std::unordered_map<uint64_t, VulkanContext> m_contexts;
 		std::queue<size_t> m_remove_queue;
 	};
 }

@@ -8,13 +8,6 @@ import :Image;
 
 export
 {
-	struct VulkanFrameConstants
-	{
-		VkCommandBufferBeginInfo cmd_begin_info{};
-		VkCommandBufferSubmitInfo graphics_buffer_submit_info{};
-		VkSubmitInfo2 grahpics_submit_info{};
-	};
-
 	struct VulkanFrame
 	{
 		uint32_t generation = 0;

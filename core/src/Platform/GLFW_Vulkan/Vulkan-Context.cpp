@@ -20,13 +20,16 @@
 //		image sizes. To fix this, frame images need to be re-created when the
 //		swapchain gets recreated
 
+import Graphics;
 import Vulkan;
 import Aurion.Window;
 
 VulkanContext::VulkanContext()
-	: m_handle({}), m_max_frames_in_flight(0), m_current_frame(0), m_vsync_enabled(true), m_enabled(true)
+	: m_handle({}), m_max_frames_in_flight(0), m_logical_device(nullptr),
+	m_surface({}), m_frames(), m_current_frame(0),
+	m_render_as_ui(false), m_enabled(true), m_vsync_enabled(true)
 {
-
+	
 }
 
 VulkanContext::~VulkanContext()
@@ -177,7 +180,18 @@ bool VulkanContext::RenderFrame()
 	if (!m_enabled)
 		return true;
 
+	// Setup current frame + Commands
 	const VulkanFrame& frame = m_frames[m_current_frame];
+	VulkanRenderCommand render_cmd{
+		m_handle,
+		m_current_frame,
+		frame.graphics_cmd_buffer,
+		frame.compute_cmd_buffer,
+		frame.image.view,
+		frame.image.sampler,
+		frame.image.extent,
+		frame.image.format
+	};
 
 	// Reset Fences
 	const VkFence fences[2] = { frame.graphics_fence, frame.compute_fence };
@@ -247,23 +261,15 @@ bool VulkanContext::RenderFrame()
 		)
 	});
 
-	if (m_bound_command)
-	{
-		m_bound_command(VulkanCommand{
-			.window_handle = m_handle,
-			.graphics_buffer = frame.graphics_cmd_buffer,
-			.compute_buffer = frame.compute_cmd_buffer,
-			.render_image = frame.image.image,
-			.render_view = frame.image.view,
-			.render_sampler = frame.image.sampler,
-			.render_extent = frame.image.extent,
-			.render_format = frame.image.format,
-			.swapchain_extent = m_surface.swapchain.extent,
-			.current_frame = m_current_frame
-		});
-	}
+	// Trigger all render layers
+	for (size_t i = 0; i < m_render_layers.size(); i++)
+		m_render_layers[i]->Record(&render_cmd);
 
-	// TODO: UI Rendering
+	// Transitions for UI Rendering
+
+	// Trigger all render overlays
+	for (size_t i = 0; i < m_render_overlays.size(); i++)
+		m_render_overlays[i]->Record(nullptr);
 
 	// Get render image and swapchain in appropriate layouts for image
 	//	copy
@@ -891,9 +897,4 @@ bool VulkanContext::RevalidateAllFrames()
 	}
 
 	return true;
-}
-
-void VulkanContext::BindRenderCommand(const std::function<void(const VulkanCommand&)>& command)
-{
-	m_bound_command = command;
 }

@@ -2,6 +2,7 @@
 
 #include <functional>
 #include <span>
+#include <memory>
 
 #include <chrono>
 
@@ -9,13 +10,15 @@
 
 #include <vulkan/vulkan.h>
 
+import HelloTriangle;
 import TerrainGenerator;
 import Aurion.GLFW;
 import Vulkan;
 
 TerrainGenerator::TerrainGenerator()
 {
-	
+	std::vector<std::unique_ptr<IRenderLayer>> layers;
+	layers.emplace_back(std::make_unique<HelloTriangleLayer>());
 }
 
 TerrainGenerator::~TerrainGenerator()
@@ -156,98 +159,42 @@ void TerrainGenerator::Start()
 	m_should_close = false;
 
 	Aurion::WindowConfig window_config;
-	window_config.title = "Terrain Generator";
 
 	// Create the main window
+	window_config.title = "Terrain Generator";
 	Aurion::WindowHandle main_window = m_window_driver.InitWindow(window_config);
 
-	// Create a graphics context for that window
-	VulkanContext* ctx = m_renderer->CreateContext(main_window);
+	window_config.title = "Test Window";
+	Aurion::WindowHandle sec_window = m_window_driver.InitWindow(window_config);
 
-	// Submit a single command to process the rendering for this window
-	ctx->BindRenderCommand(std::bind(&TerrainGenerator::Render, this, std::placeholders::_1));
+	// Create a graphics context for that window
+	VulkanContext* first = m_renderer->CreateContext(main_window);
+	VulkanContext* second = m_renderer->CreateContext(sec_window);
+
+	first->AddRenderLayer<HelloTriangleLayer>()->SetGraphicsPipeline(m_render_pipelines[0]);
+	second->AddRenderLayer<HelloTriangleLayer>()->SetGraphicsPipeline(m_render_pipelines[0]);
 }
 
 void TerrainGenerator::Run()
 {
 	Aurion::WindowHandle main_window = m_window_driver.GetWindow("Terrain Generator");
-	VulkanContext* main_render_context = m_renderer->GetContext(main_window.id);
+	Aurion::WindowHandle sec_window = m_window_driver.GetWindow("Test Window");
 
 	while (!m_should_close)
 	{
 		// Input Polling and Window Updates
 		main_window.window->Update();
+		sec_window.window->Update();
 
 		// Render Commands
 		m_renderer->Render();
 
 		// Close if the main window is no longer open
-		m_should_close = !main_window.window->IsOpen();
+		m_should_close = !main_window.window->IsOpen() && !sec_window.window->IsOpen();
 	}
 }
 
 void TerrainGenerator::Unload()
 {
 
-}
-
-void TerrainGenerator::Render(const VulkanCommand& command)
-{
-	VulkanPipeline& pipeline = m_render_pipelines[0];
-
-	// Draw Triangle
-	VkRenderingAttachmentInfo color_attachment{
-		.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-		.imageView = command.render_view,
-		.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-		.clearValue = VkClearValue{
-			.color = VkClearColorValue{
-				0.0f,
-				0.0f,
-				0.0f,
-				1.0f
-			}
-		}
-	};
-
-	VkRenderingInfo render_info{
-		.sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-		.renderArea = VkRect2D{
-			.extent = VkExtent2D{ command.render_extent.width, command.render_extent.height }
-		},
-		.layerCount = 1,
-		.viewMask = 0,
-		.colorAttachmentCount = 1,
-		.pColorAttachments = &color_attachment
-	};
-
-	vkCmdBeginRendering(command.graphics_buffer, &render_info);
-
-	vkCmdBindPipeline(command.graphics_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.handle);
-
-	//set dynamic viewport and scissor
-	VkViewport viewport = {};
-	viewport.x = 0;
-	viewport.y = 0;
-	viewport.width = static_cast<float>(command.render_extent.width);
-	viewport.height = static_cast<float>(command.render_extent.height);
-	viewport.minDepth = 0.f;
-	viewport.maxDepth = 1.f;
-
-	vkCmdSetViewport(command.graphics_buffer, 0, 1, &viewport);
-
-	VkRect2D scissor = {};
-	scissor.offset.x = 0;
-	scissor.offset.y = 0;
-	scissor.extent.width = command.render_extent.width;
-	scissor.extent.height = command.render_extent.height;
-
-	vkCmdSetScissor(command.graphics_buffer, 0, 1, &scissor);
-
-	//launch a draw command to draw 3 vertices
-	vkCmdDraw(command.graphics_buffer, 3, 1, 0, 0);
-
-	vkCmdEndRendering(command.graphics_buffer);
 }
