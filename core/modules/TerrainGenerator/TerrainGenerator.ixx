@@ -1,9 +1,15 @@
+module;
+
+#include <span>
+
 export module TerrainGenerator;
 
 import Aurion.Application;
 import Aurion.GLFW;
 
+import Graphics;
 import Vulkan;
+import HelloTriangle;
 
 export
 {
@@ -21,13 +27,12 @@ export
 		void Run();
 		void Unload();
 
-		void Render(const VulkanCommand& command);
-
 	private:
 		Aurion::GLFWDriver m_window_driver;
 		VulkanDriver m_vulkan_driver;
 		VulkanRenderer* m_renderer;
-		VulkanPipelineBuilder::Result m_render_pipelines;
+		std::span<VulkanPipeline> m_render_pipelines;
+		std::vector<HelloTriangleLayer> m_hello_triangles;
 		bool m_should_close;
 	};
 }

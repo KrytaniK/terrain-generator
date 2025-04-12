@@ -11,6 +11,15 @@ export module Vulkan:Device;
 
 export
 {
+	struct VulkanDeviceConfiguration
+	{
+		VkPhysicalDeviceFeatures2 features{};
+		VkPhysicalDeviceType device_type;
+		VmaAllocatorCreateFlags allocator_flags = 0;
+		std::vector<const char*> extensions;
+		std::vector<const char*> layers;
+	};
+
 	struct VulkanDeviceRequirements
 	{
 		VkPhysicalDeviceFeatures2 features{};
@@ -22,8 +31,8 @@ export
 
 	struct VulkanDevice
 	{
-		static VulkanDevice Create(const VkInstance& instance, const VulkanDeviceRequirements& reqs);
-		static bool MeetsRequirements(const VkPhysicalDevice& physical_device, const VulkanDeviceRequirements& reqs);
+		static VulkanDevice Create(const VkInstance& instance, const VulkanDeviceConfiguration& reqs);
+		static bool MeetsRequirements(const VkPhysicalDevice& physical_device, const VulkanDeviceConfiguration& reqs);
 
 		VkInstance vk_instance = VK_NULL_HANDLE;
 		VkDevice handle = VK_NULL_HANDLE;

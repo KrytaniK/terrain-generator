@@ -1,7 +1,6 @@
 module;
 
 #include <vector>
-#include <span>
 
 #include <vulkan/vulkan.h>
 
@@ -17,7 +16,7 @@ export
 {
 	struct VulkanDriverConfiguration
 	{
-		VkApplicationInfo app_info{};
+		VkApplicationInfo app_info{ .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO };
 		std::vector<const char*> validation_layers{};
 		VkDebugUtilsMessengerCreateInfoEXT debug_messenger_info{};
 		uint32_t max_frames_in_flight = 1;
@@ -34,19 +33,24 @@ export
 		const uint64_t GetType() override;
 		
 		virtual void Initialize() override;
-		void Initialize(const VulkanDriverConfiguration& config);
 
-		virtual IRenderer* CreateRenderer(const std::vector<Aurion::WindowHandle>& windows = {}) override;
-		IRenderer* CreateRenderer(std::span<Aurion::WindowHandle> windows, const VulkanDeviceRequirements& device_reqs);
+		virtual IRenderer* CreateRenderer() override;
+
+		void SetConfiguration(VulkanDriverConfiguration& config);
+
+		void SetDeviceConfiguration(const VulkanDeviceConfiguration& config);
 
 	private:
 		void CreateVkInstance();
 		void CreateVkDebugMessenger();
 
 	private:
-		VulkanDriverConfiguration m_config;
+		VulkanDriverConfiguration* m_driver_config;
+		const VulkanDeviceConfiguration* m_device_config;
 		VkInstance m_vk_instance;
+
 		VkDebugUtilsMessengerEXT m_vk_debug_messenger;
+		
 		std::vector<VulkanRenderer> m_renderers;
 	};
 }

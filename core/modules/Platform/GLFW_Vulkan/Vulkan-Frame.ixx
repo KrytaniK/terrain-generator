@@ -10,6 +10,8 @@ export
 {
 	struct VulkanFrame
 	{
+		uint32_t generation = 0;
+
 		VulkanImage image{};
 
 		VkCommandPool compute_cmd_pool = VK_NULL_HANDLE;

@@ -20,6 +20,6 @@ export
 
 		virtual void Initialize() = 0;
 
-		virtual IRenderer* CreateRenderer(const std::vector<Aurion::WindowHandle>& windows = {}) = 0;
+		virtual IRenderer* CreateRenderer() = 0;
 	};
 }

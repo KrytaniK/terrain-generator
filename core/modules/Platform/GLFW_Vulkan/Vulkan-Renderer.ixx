@@ -1,9 +1,9 @@
 module;
 
 #include <cstdint>
-#include <set>
 #include <vector>
 #include <unordered_map>
+#include <queue>
 
 #include <vulkan/vulkan.h>
 
@@ -12,7 +12,7 @@ export module Vulkan:Renderer;
 import Graphics;
 
 import :Device;
-import :Window;
+import :Context;
 import :Pipeline;
 
 import :Command;
@@ -25,41 +25,35 @@ export
 		VulkanRenderer();
 		virtual ~VulkanRenderer() override;
 
-		void Init(const VkInstance& vk_instance, const VulkanDeviceRequirements& logical_device_reqs, const uint32_t& max_in_flight_frames);
+		VulkanRenderer(const VulkanRenderer&) = delete;
+		VulkanRenderer& operator=(const VulkanRenderer&) = delete;
 
-		void Shutdown();
+		VulkanRenderer(VulkanRenderer&&) = default;
+		VulkanRenderer& operator=(VulkanRenderer&&) = default;
 
-		virtual void BeginFrame() override;
+		virtual void Initialize() override;
 
-		virtual void EndFrame() override;
+		virtual void Render() override;
 
-		virtual bool AddWindow(const Aurion::WindowHandle& handle) override;
+		virtual VulkanContext* CreateContext(const Aurion::WindowHandle& handle) override;
 
-		virtual void SetWindowEnabled(const Aurion::WindowHandle& handle, bool enabled) override;
+		virtual VulkanContext* GetContext(const uint64_t& id) override;
 
-		virtual VulkanWindow* GetGraphicsWindow(const Aurion::WindowHandle& handle) override;
-		virtual VulkanWindow* GetGraphicsWindow(const uint64_t& window_id) override;
+		virtual bool RemoveContext(const uint64_t& id) override;
 
-		virtual bool RemoveGraphicsWindow(const Aurion::WindowHandle& handle) override;
-		virtual bool RemoveGraphicsWindow(const uint64_t& window_id) override;
+		void SetConfiguration(const VkInstance& vk_instance, const VulkanDeviceConfiguration* device_config, const uint32_t& max_in_flight_frames = 3);
 
-		VulkanPipelineBuilder* GetPipelineBuilder();
+		std::vector<VulkanPipeline>& GetVkPipelineBuffer();
 
-		// Binds a render command to the window for repeated calls. CAUTION: These will NOT be cleared each frame.
-		void BindCommand(const Aurion::WindowHandle& window_handle, const std::function<void(const VulkanCommand&)>& command);
-
-		// Submits a render command for execution. Gets cleared every frame
-		void SubmitCommand(const Aurion::WindowHandle& window_handle, const std::function<void(const VulkanCommand&)>& command);
-
-		// Submits a render command for immediate execution outside of the primary render loop.
-		//void SubmitCommandImmediate();
+		VulkanDevice* GetLogicalDevice();
 		
 	private:
+		VkInstance m_vk_instance;
+		const VulkanDeviceConfiguration* m_config;
 		VulkanDevice m_logical_device;
-		VulkanPipelineBuilder m_pipeline_builder;
-		std::vector<VulkanPipeline> m_pipelines;
-		std::unordered_map<uint64_t, VulkanWindow> m_windows;
-		std::set<uint64_t> m_windows_to_remove;
 		uint32_t m_max_in_flight_frames;
+		std::vector<VulkanPipeline> m_pipelines;
+		std::unordered_map<uint64_t, VulkanContext> m_contexts;
+		std::queue<size_t> m_remove_queue;
 	};
 }
