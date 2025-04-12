@@ -75,7 +75,7 @@ void VulkanContext::Initialize()
 	if (!m_handle.window || !m_logical_device)
 	{
 		AURION_ERROR(
-			"[VulkanWindow] Failed to initalize window. Invalid %s",
+			"[Vulkan Context] Failed to initalize window. Invalid %s",
 			m_handle.window == nullptr ? "OS handle." : "logical device"
 		);
 		return;
@@ -107,6 +107,21 @@ void VulkanContext::Initialize()
 void VulkanContext::SetWindow(const Aurion::WindowHandle& handle)
 {
 	m_handle = handle;
+
+	// This is fine for this use case, but not for modularity/reusability.
+	// It's not guaranteed that these functions don't overwrite any previous data (In fact, they do).
+	glfwSetWindowUserPointer((GLFWwindow*)handle.window->GetNativeHandle(), this);
+	glfwSetFramebufferSizeCallback((GLFWwindow*)handle.window->GetNativeHandle(), [](GLFWwindow* window, int width, int height) {
+		VulkanContext* _this = (VulkanContext*)glfwGetWindowUserPointer(window);
+
+		_this->RenderFrame();
+	});
+
+	glfwSetWindowCloseCallback((GLFWwindow*)handle.window->GetNativeHandle(), [](GLFWwindow* window) {
+		VulkanContext* _this = (VulkanContext*)glfwGetWindowUserPointer(window);
+
+		_this->m_handle.window->Close();
+	});
 }
 
 void VulkanContext::SetMaxInFlightFrames(const uint32_t& max_in_flight_frames)
@@ -145,7 +160,9 @@ bool VulkanContext::SetVSyncEnabled(const bool& enabled)
 
 	// Always recreate for disabled VSync, but only recreate if present mode does not match for enabled VSync
 	if (!m_vsync_enabled || (m_vsync_enabled && m_surface.swapchain.present_mode != VK_PRESENT_MODE_FIFO_KHR))
+	{
 		this->CreateSwapchain(m_surface.swapchain.handle);
+	}
 
 	return m_vsync_enabled = enabled;
 }
@@ -181,11 +198,27 @@ bool VulkanContext::RenderFrame()
 		&m_surface.swapchain.current_image_index
 	);
 
+	// If the swapchain has changed since the last frame,
+	//	update the frame's image to match.
+	if (frame.generation != m_surface.swapchain.generation)
+		this->RevalidateCurrentFrame();
+
 	// Recreate swapchain if needed
 	if (acquire_result == VK_ERROR_OUT_OF_DATE_KHR)
 	{
+		// Recreate the swapchain and revalidate the current frame.
 		this->CreateSwapchain(m_surface.swapchain.handle);
-		// TODO: Revalidate all frame images
+		this->RevalidateCurrentFrame();
+
+		// Retrieve the new swapchain image
+		vkAcquireNextImageKHR(
+			m_logical_device->handle,
+			m_surface.swapchain.handle,
+			UINT64_MAX,
+			frame.swapchain_semaphore,
+			nullptr,
+			&m_surface.swapchain.current_image_index
+		);
 	}
 	else if (acquire_result != VK_SUCCESS && acquire_result == VK_SUBOPTIMAL_KHR)
 	{
@@ -273,8 +306,8 @@ bool VulkanContext::RenderFrame()
 		},
 		.dstOffset = { 0, 0, 0 },
 		.extent = {
-			.width = frame.image.extent.width,
-			.height = frame.image.extent.height,
+			.width = m_surface.swapchain.extent.width,
+			.height = m_surface.swapchain.extent.height,
 			.depth = 1
 		}
 	};
@@ -428,7 +461,7 @@ bool VulkanContext::QueryPresentationSupport()
 
 	if (supported == VK_FALSE || !m_surface.present_queue_index.has_value())
 	{
-		AURION_CRITICAL("[VulkanWindow] Failed to generate VkSwapchain for window with ID %d. Reason: %s.",
+		AURION_CRITICAL("[Vulkan Context] Failed to generate VkSwapchain for window with ID %d. Reason: %s.",
 			m_handle.id,
 			supported == VK_FALSE ? "Surface Presentation Not supported." : "Invalid Present Queue Index."
 		);
@@ -473,7 +506,7 @@ bool VulkanContext::QuerySwapchainSupport()
 	if (format_count == 0 || present_mode_count == 0)
 	{
 		AURION_ERROR(
-			"[VulkanWindow] VkSurface %s count(s) are 0. Surface presentation is likely not supported.",
+			"[Vulkan Context] VkSurface %s count(s) are 0. Surface presentation is likely not supported.",
 			format_count == 0 ? (present_mode_count == 0 ? "Format and PresentMode" : "Format") : "PresentMode"
 		);
 		return false;
@@ -501,7 +534,7 @@ bool VulkanContext::QuerySwapchainSupport()
 	if (m_surface.swapchain.support.formats.empty() || m_surface.swapchain.support.present_modes.empty())
 	{
 		AURION_ERROR(
-			"[VulkanWindow] VkSurface %s count(s) are 0. Surface presentation is likely not supported.",
+			"[Vulkan Context] VkSurface %s count(s) are 0. Surface presentation is likely not supported.",
 			m_surface.swapchain.support.formats.empty() == 0 ?
 			(m_surface.swapchain.support.present_modes.empty() == 0 ? "Format and PresentMode" : "Format") :
 			"PresentMode"
@@ -629,7 +662,7 @@ bool VulkanContext::CreateSwapchain(const VkSwapchainKHR old_swapchain, const Vk
 	// Create new swapchain
 	if (vkCreateSwapchainKHR(m_logical_device->handle, &createInfo, nullptr, &m_surface.swapchain.handle) != VK_SUCCESS)
 	{
-		AURION_ERROR("[VulkanWindow] Failed to create swap chain!");
+		AURION_ERROR("[Vulkan Context] Failed to create swap chain!");
 		return false;
 	}
 
@@ -641,7 +674,10 @@ bool VulkanContext::CreateSwapchain(const VkSwapchainKHR old_swapchain, const Vk
 
 	// Destroy old swapchain, if provided
 	if (old_swapchain != VK_NULL_HANDLE)
+	{
 		vkDestroySwapchainKHR(m_logical_device->handle, old_swapchain, nullptr);
+		m_surface.swapchain.generation++;
+	}
 
 	// Reset current swapchain image index
 	m_surface.swapchain.current_image_index = 0;
@@ -779,6 +815,79 @@ bool VulkanContext::GenerateFrameData()
 				return false;
 			}
 		}
+	}
+
+	return true;
+}
+
+bool VulkanContext::RevalidateCurrentFrame()
+{
+	VulkanFrame& frame = m_frames[m_current_frame];
+
+	// Destroy old image data
+	{
+		vkDestroySampler(m_logical_device->handle, frame.image.sampler, nullptr);
+		vkDestroyImageView(m_logical_device->handle, frame.image.view, nullptr);
+		vmaDestroyImage(m_logical_device->allocator, frame.image.image, frame.image.allocation);
+	}
+
+	VulkanImageCreateInfo create_info{};
+	create_info.extent = VkExtent3D{
+		.width = m_surface.swapchain.extent.width,
+		.height = m_surface.swapchain.extent.height,
+		.depth = 1
+	};
+
+	// Ensure each image matches the swapchain format
+	create_info.format = m_surface.swapchain.format.format;
+
+	create_info.usage_flags |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+	create_info.usage_flags |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+	create_info.usage_flags |= VK_IMAGE_USAGE_STORAGE_BIT;
+	create_info.usage_flags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+	create_info.usage_flags |= VK_IMAGE_USAGE_SAMPLED_BIT;
+
+	create_info.aspect_flags = VK_IMAGE_ASPECT_COLOR_BIT;
+
+	frame.image = VulkanImage::Create(m_logical_device->handle, m_logical_device->allocator, create_info);
+	frame.generation = m_surface.swapchain.generation;
+
+	return true;
+}
+
+bool VulkanContext::RevalidateAllFrames()
+{
+	for (size_t i = 0; i < m_frames.size(); i++)
+	{
+		VulkanFrame& frame = m_frames[i];
+
+		// Destroy old image data
+		{
+			vkDestroySampler(m_logical_device->handle, frame.image.sampler, nullptr);
+			vkDestroyImageView(m_logical_device->handle, frame.image.view, nullptr);
+			vmaDestroyImage(m_logical_device->allocator, frame.image.image, frame.image.allocation);
+		}
+
+		VulkanImageCreateInfo create_info{};
+		create_info.extent = VkExtent3D{
+			.width = m_surface.swapchain.extent.width,
+			.height = m_surface.swapchain.extent.height,
+			.depth = 1
+		};
+
+		// Ensure each image matches the swapchain format
+		create_info.format = m_surface.swapchain.format.format;
+
+		create_info.usage_flags |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+		create_info.usage_flags |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+		create_info.usage_flags |= VK_IMAGE_USAGE_STORAGE_BIT;
+		create_info.usage_flags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+		create_info.usage_flags |= VK_IMAGE_USAGE_SAMPLED_BIT;
+
+		create_info.aspect_flags = VK_IMAGE_ASPECT_COLOR_BIT;
+
+		frame.image = VulkanImage::Create(m_logical_device->handle, m_logical_device->allocator, create_info);
+		frame.generation = m_surface.swapchain.generation;
 	}
 
 	return true;

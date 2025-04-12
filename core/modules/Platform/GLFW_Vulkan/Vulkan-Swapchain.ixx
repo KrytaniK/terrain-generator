@@ -18,6 +18,7 @@ export
 
 	struct VulkanSwapchain
 	{
+		uint32_t generation = 0;
 		VkSwapchainKHR handle = VK_NULL_HANDLE;
 		VulkanSwapchainSupport support{};
 		VkExtent2D extent{};

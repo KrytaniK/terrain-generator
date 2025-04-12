@@ -81,7 +81,7 @@ VulkanContext* VulkanRenderer::CreateContext(const Aurion::WindowHandle& handle)
 		}
 	}
 
-	m_contexts.emplace_back(VulkanContext());
+	m_contexts.emplace_back();
 	m_contexts.back().SetLogicalDevice(&m_logical_device);
 	m_contexts.back().SetMaxInFlightFrames(m_max_in_flight_frames);
 	m_contexts.back().SetWindow(handle);

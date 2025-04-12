@@ -73,6 +73,8 @@ export
 		bool CreateSwapchain(const VkSwapchainKHR old_swapchain = VK_NULL_HANDLE, const VkPresentModeKHR& present_mode = VK_PRESENT_MODE_MAX_ENUM_KHR);
 
 		bool GenerateFrameData();
+		bool RevalidateCurrentFrame();
+		bool RevalidateAllFrames();
 
 	private:
 		Aurion::WindowHandle m_handle; // OS Window Handle

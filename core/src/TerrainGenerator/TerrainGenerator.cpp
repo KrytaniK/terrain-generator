@@ -165,7 +165,7 @@ void TerrainGenerator::Start()
 	VulkanContext* ctx = m_renderer->CreateContext(main_window);
 
 	// Submit a single command to process the rendering for this window
-	//ctx->BindRenderCommand(std::bind(&TerrainGenerator::Render, this, std::placeholders::_1));
+	ctx->BindRenderCommand(std::bind(&TerrainGenerator::Render, this, std::placeholders::_1));
 }
 
 void TerrainGenerator::Run()
@@ -200,13 +200,13 @@ void TerrainGenerator::Render(const VulkanCommand& command)
 		.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
 		.imageView = command.render_view,
 		.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-		.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
+		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
 		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
 		.clearValue = VkClearValue{
 			.color = VkClearColorValue{
-				0.125f,
 				0.0f,
-				0.125f,
+				0.0f,
+				0.0f,
 				1.0f
 			}
 		}
