@@ -1,14 +1,14 @@
-export module HelloTriangle:Overlay;
+export module ImGuiDemo;
 
 import Graphics;
 
 export
 {
-	class HelloTriangleOverlay : public IRenderOverlay
+	class ImGuiDemoOverlay : public IRenderOverlay
 	{
 	public:
-		HelloTriangleOverlay();
-		virtual ~HelloTriangleOverlay();
+		ImGuiDemoOverlay();
+		virtual ~ImGuiDemoOverlay();
 
 		void Record(const IGraphicsCommand* command) override;
 

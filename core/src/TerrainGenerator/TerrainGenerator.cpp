@@ -11,57 +11,15 @@
 #include <vulkan/vulkan.h>
 #include <imgui.h>
 
-import HelloTriangle;
 import TerrainGenerator;
 import Aurion.GLFW;
+import Graphics;
 import Vulkan;
 
-import Graphics;
-class TestOverlay : public IRenderOverlay
-{
-private:
-	int counter;
-	bool toggle_state;
-	float slider_value;
-
-public:
-	// Inherited via IRenderOverlay
-	void Record(const IGraphicsCommand* command) override
-	{
-		ImGui::Begin("Simple Panel");
-
-		ImGui::Text("This is a test panel.");
-
-		if (ImGui::Button("Increment")) counter++;
-		ImGui::SameLine();
-		ImGui::Text("Counter = %d", counter);
-		
-		if (ImGui::Button("Decrement")) counter--;
-
-		ImGui::SameLine();
-		ImGui::Text("Counter = %d", counter);
-
-		ImGui::Checkbox("Toggle me", &toggle_state);
-		ImGui::SliderFloat("Slider", &slider_value, 0.0f, 1.0f);
-
-		ImGui::End();
-	}
-
-	void Enable() override
-	{
-
-	}
-
-	void Disable() override
-	{
-
-	}
-};
 
 TerrainGenerator::TerrainGenerator()
 {
-	std::vector<std::unique_ptr<IRenderLayer>> layers;
-	layers.emplace_back(std::make_unique<HelloTriangleLayer>());
+	
 }
 
 TerrainGenerator::~TerrainGenerator()
@@ -207,22 +165,9 @@ void TerrainGenerator::Start()
 	window_config.title = "Terrain Generator";
 	Aurion::WindowHandle main_window = m_window_driver.InitWindow(window_config);
 
-	window_config.title = "Test Window";
-	Aurion::WindowHandle sec_window = m_window_driver.InitWindow(window_config);
-
 	// Create a graphics context for that window
 	VulkanContext* first = m_renderer->CreateContext(main_window);
-	first->SetVSyncEnabled(false);
-	
-	VulkanContext* second = m_renderer->CreateContext(sec_window);
-
-	HelloTriangleLayer* layer_1 = first->AddRenderLayer<HelloTriangleLayer>();
-	layer_1->SetGraphicsPipeline(m_render_pipelines[0]);
-	first->AddRenderOverlay<TestOverlay>();
-
-	HelloTriangleLayer* layer_2 = second->AddRenderLayer<HelloTriangleLayer>();
-	layer_2->SetGraphicsPipeline(m_render_pipelines[0]);
-	second->AddRenderOverlay<HelloTriangleOverlay>();
+	first->SetVSyncEnabled(true);
 }
 
 void TerrainGenerator::Run()
@@ -234,13 +179,12 @@ void TerrainGenerator::Run()
 	{
 		// Input Polling and Window Updates
 		main_window.window->Update();
-		sec_window.window->Update();
 
 		// Render Commands
 		m_renderer->Render();
 
 		// Close if the main window is no longer open
-		m_should_close = !main_window.window->IsOpen() && !sec_window.window->IsOpen();
+		m_should_close = !main_window.window->IsOpen();
 	}
 }
 

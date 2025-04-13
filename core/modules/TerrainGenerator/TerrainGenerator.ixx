@@ -9,7 +9,6 @@ import Aurion.GLFW;
 
 import Graphics;
 import Vulkan;
-import HelloTriangle;
 
 export
 {
@@ -32,7 +31,6 @@ export
 		VulkanDriver m_vulkan_driver;
 		VulkanRenderer* m_renderer;
 		std::span<VulkanPipeline> m_render_pipelines;
-		std::vector<HelloTriangleLayer> m_hello_triangles;
 		bool m_should_close;
 	};
 }

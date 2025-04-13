@@ -1,4 +1,4 @@
-export module HelloTriangle:Layer;
+export module HelloTriangle;
 
 import Graphics;
 import Vulkan;
