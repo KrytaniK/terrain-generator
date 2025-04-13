@@ -9,11 +9,54 @@
 #include <GLFW/glfw3.h>
 
 #include <vulkan/vulkan.h>
+#include <imgui.h>
 
 import HelloTriangle;
 import TerrainGenerator;
 import Aurion.GLFW;
 import Vulkan;
+
+import Graphics;
+class TestOverlay : public IRenderOverlay
+{
+private:
+	int counter;
+	bool toggle_state;
+	float slider_value;
+
+public:
+	// Inherited via IRenderOverlay
+	void Record(const IGraphicsCommand* command) override
+	{
+		ImGui::Begin("Simple Panel");
+
+		ImGui::Text("This is a test panel.");
+
+		if (ImGui::Button("Increment")) counter++;
+		ImGui::SameLine();
+		ImGui::Text("Counter = %d", counter);
+		
+		if (ImGui::Button("Decrement")) counter--;
+
+		ImGui::SameLine();
+		ImGui::Text("Counter = %d", counter);
+
+		ImGui::Checkbox("Toggle me", &toggle_state);
+		ImGui::SliderFloat("Slider", &slider_value, 0.0f, 1.0f);
+
+		ImGui::End();
+	}
+
+	void Enable() override
+	{
+
+	}
+
+	void Disable() override
+	{
+
+	}
+};
 
 TerrainGenerator::TerrainGenerator()
 {
@@ -169,10 +212,17 @@ void TerrainGenerator::Start()
 
 	// Create a graphics context for that window
 	VulkanContext* first = m_renderer->CreateContext(main_window);
+	first->SetVSyncEnabled(false);
+	
 	VulkanContext* second = m_renderer->CreateContext(sec_window);
 
-	first->AddRenderLayer<HelloTriangleLayer>()->SetGraphicsPipeline(m_render_pipelines[0]);
-	second->AddRenderLayer<HelloTriangleLayer>()->SetGraphicsPipeline(m_render_pipelines[0]);
+	HelloTriangleLayer* layer_1 = first->AddRenderLayer<HelloTriangleLayer>();
+	layer_1->SetGraphicsPipeline(m_render_pipelines[0]);
+	first->AddRenderOverlay<TestOverlay>();
+
+	HelloTriangleLayer* layer_2 = second->AddRenderLayer<HelloTriangleLayer>();
+	layer_2->SetGraphicsPipeline(m_render_pipelines[0]);
+	second->AddRenderOverlay<HelloTriangleOverlay>();
 }
 
 void TerrainGenerator::Run()

@@ -9,8 +9,6 @@ export
 	public:
 		virtual ~IRenderOverlay() = default;
 
-		virtual void Initialize() = 0;
-
 		virtual void Record(const IGraphicsCommand* command) = 0;
 
 		virtual void Enable() = 0;

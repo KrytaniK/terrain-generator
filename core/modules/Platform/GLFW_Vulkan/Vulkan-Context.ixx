@@ -94,6 +94,8 @@ export
 		bool RevalidateCurrentFrame();
 		bool RevalidateAllFrames();
 
+		bool InitializeImGui();
+
 	private:
 		Aurion::WindowHandle m_handle; // OS Window Handle
 		uint32_t m_max_frames_in_flight;
@@ -105,6 +107,11 @@ export
 
 		std::vector<std::unique_ptr<IRenderLayer>> m_render_layers;
 		std::vector<std::unique_ptr<IRenderOverlay>> m_render_overlays;
+
+		// ImGui
+		ImGuiContext* m_imgui_context; // the context associated with this window
+		ImGuiContext* m_cached_imgui_context; // cached context for when this window isn't focused
+		VkDescriptorPool m_imgui_desc_pool;
 
 		size_t m_current_frame;
 		bool m_render_as_ui;

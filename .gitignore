@@ -7,8 +7,8 @@
 [Bb]in/
 [Bb]in-int/
 
-# Don't include files in the Sandbox Directory
-[Ss]andbox/**
+# Don't include imgui config
+imgui.ini
 
 # Solution files
 *.sln

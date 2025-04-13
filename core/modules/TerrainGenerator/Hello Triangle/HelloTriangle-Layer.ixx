@@ -1,4 +1,4 @@
-export module HelloTriangle;
+export module HelloTriangle:Layer;
 
 import Graphics;
 import Vulkan;
@@ -9,9 +9,7 @@ export
 	{
 	public:
 		HelloTriangleLayer();
-		~HelloTriangleLayer();
-
-		virtual void Initialize() override;
+		virtual ~HelloTriangleLayer();
 
 		virtual void Record(const IGraphicsCommand* command) override;
 

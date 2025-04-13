@@ -16,11 +16,6 @@ HelloTriangleLayer::~HelloTriangleLayer()
 
 }
 
-void HelloTriangleLayer::Initialize()
-{
-
-}
-
 void HelloTriangleLayer::Record(const IGraphicsCommand* command)
 {
 	if (!m_enabled || !m_pipeline)

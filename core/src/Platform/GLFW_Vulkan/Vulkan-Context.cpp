@@ -26,8 +26,8 @@ import Aurion.Window;
 
 VulkanContext::VulkanContext()
 	: m_handle({}), m_max_frames_in_flight(0), m_logical_device(nullptr),
-	m_surface({}), m_frames(), m_current_frame(0),
-	m_render_as_ui(false), m_enabled(true), m_vsync_enabled(true)
+	m_surface({}), m_frames(), m_current_frame(0), m_render_as_ui(false), 
+	m_enabled(true), m_vsync_enabled(true)
 {
 	
 }
@@ -40,6 +40,11 @@ VulkanContext::~VulkanContext()
 
 	// Wait for logical device
 	vkDeviceWaitIdle(m_logical_device->handle);
+
+	// Cleanup ImGui
+	ImGui::SetCurrentContext(m_imgui_context);
+	ImGui_ImplVulkan_Shutdown();
+	vkDestroyDescriptorPool(m_logical_device->handle, m_imgui_desc_pool, nullptr);
 
 	// Clean up Frame resources
 	for (auto& frame : m_frames)
@@ -103,6 +108,12 @@ void VulkanContext::Initialize()
 	if (!this->GenerateFrameData())
 	{
 		AURION_CRITICAL("[Vulkan Context] Failed to generate frame data for window with ID: %d", m_handle.id);
+		return;
+	}
+
+	if (!this->InitializeImGui())
+	{
+		AURION_CRITICAL("[Vulkan Context] Failed to initialize ImGui for window with ID: %d", m_handle.id);
 		return;
 	}
 }
@@ -180,6 +191,15 @@ bool VulkanContext::RenderFrame()
 	if (!m_enabled)
 		return true;
 
+	bool is_hovered = glfwGetWindowAttrib((GLFWwindow*)m_handle.window->GetNativeHandle(), GLFW_HOVERED) == GLFW_TRUE;
+	bool is_focused = glfwGetWindowAttrib((GLFWwindow*)m_handle.window->GetNativeHandle(), GLFW_FOCUSED) == GLFW_TRUE;
+	bool imgui_input_enabled = is_hovered && is_focused;
+
+	if (imgui_input_enabled)
+		m_cached_imgui_context = nullptr;
+	else
+		m_cached_imgui_context = ImGui::GetCurrentContext();
+
 	// Setup current frame + Commands
 	const VulkanFrame& frame = m_frames[m_current_frame];
 	VulkanRenderCommand render_cmd{
@@ -253,9 +273,9 @@ bool VulkanContext::RenderFrame()
 		VulkanImage::CreateLayoutTransition(
 			frame.image.image,
 			VK_IMAGE_LAYOUT_UNDEFINED,
-			VK_IMAGE_LAYOUT_GENERAL,
+			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 			VK_PIPELINE_STAGE_2_NONE,
-			VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+			VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
 			0,
 			VK_ACCESS_2_SHADER_WRITE_BIT | VK_ACCESS_2_SHADER_READ_BIT
 		)
@@ -265,20 +285,66 @@ bool VulkanContext::RenderFrame()
 	for (size_t i = 0; i < m_render_layers.size(); i++)
 		m_render_layers[i]->Record(&render_cmd);
 
-	// Transitions for UI Rendering
+	// ImGui Frame (Focus if
+	ImGui::SetCurrentContext(m_imgui_context);
+	ImGui_ImplVulkan_NewFrame();
+	ImGui_ImplGlfw_NewFrame();
+	ImGui::NewFrame();
 
 	// Trigger all render overlays
 	for (size_t i = 0; i < m_render_overlays.size(); i++)
 		m_render_overlays[i]->Record(nullptr);
+
+	ImGui::Render();
+
+	// Draw ImGui to render target
+	{
+		VkRenderingAttachmentInfo colorAttachment{};
+		colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+		colorAttachment.pNext = nullptr;
+
+		colorAttachment.imageView = frame.image.view;
+		colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+		colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+		colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+
+		// Set render area to the extent of the rendered image (window)
+		VkRect2D renderArea{};
+		renderArea.extent = VkExtent2D{
+			frame.image.extent.width,
+			frame.image.extent.height
+		};
+
+		VkRenderingInfo renderInfo{};
+		renderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+		renderInfo.colorAttachmentCount = 1;
+		renderInfo.pColorAttachments = &colorAttachment;
+		renderInfo.renderArea = renderArea;
+		renderInfo.flags = 0;
+		renderInfo.layerCount = 1;
+
+		vkCmdBeginRendering(frame.graphics_cmd_buffer, &renderInfo);
+
+		ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), frame.graphics_cmd_buffer);
+
+		vkCmdEndRendering(frame.graphics_cmd_buffer);
+	}
+
+	ImGuiIO& io = ImGui::GetIO();
+	if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
+	{
+		ImGui::UpdatePlatformWindows();
+		ImGui::RenderPlatformWindowsDefault();
+	}
 
 	// Get render image and swapchain in appropriate layouts for image
 	//	copy
 	VulkanImage::TransitionLayouts(frame.graphics_cmd_buffer, {
 		VulkanImage::CreateLayoutTransition(
 			frame.image.image,
-			VK_IMAGE_LAYOUT_GENERAL,
+			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 			VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-			VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+			VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
 			VK_PIPELINE_STAGE_2_TRANSFER_BIT,
 			VK_ACCESS_2_SHADER_WRITE_BIT | VK_ACCESS_2_SHADER_READ_BIT,
 			VK_ACCESS_2_TRANSFER_READ_BIT
@@ -357,23 +423,33 @@ bool VulkanContext::RenderFrame()
 
 	// Submit All Commands
 	{
-		VkCommandBufferSubmitInfo graphics_cmd_buffer_info{};
-		graphics_cmd_buffer_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
-		graphics_cmd_buffer_info.commandBuffer = frame.graphics_cmd_buffer;
-
 		VkCommandBufferSubmitInfo compute_cmd_buffer_info{};
 		compute_cmd_buffer_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
 		compute_cmd_buffer_info.commandBuffer = frame.compute_cmd_buffer;
-
-		VkSemaphoreSubmitInfo graphics_signal_semaphore_info{};
-		graphics_signal_semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-		graphics_signal_semaphore_info.stageMask = VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT;
-		graphics_signal_semaphore_info.semaphore = frame.graphics_semaphore;
 
 		VkSemaphoreSubmitInfo compute_signal_semaphore_info{};
 		compute_signal_semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
 		compute_signal_semaphore_info.stageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
 		compute_signal_semaphore_info.semaphore = frame.compute_semaphore;
+
+		VkSubmitInfo2 compute_submit_info{};
+		compute_submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+		compute_submit_info.commandBufferInfoCount = 1;
+		compute_submit_info.pCommandBufferInfos = &compute_cmd_buffer_info;
+		compute_submit_info.signalSemaphoreInfoCount = 1;
+		compute_submit_info.pSignalSemaphoreInfos = &compute_signal_semaphore_info;
+
+		// Submit Compute Queue
+		vkQueueSubmit2(m_logical_device->compute_queue, 1, &compute_submit_info, frame.compute_fence);
+
+		VkCommandBufferSubmitInfo graphics_cmd_buffer_info{};
+		graphics_cmd_buffer_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+		graphics_cmd_buffer_info.commandBuffer = frame.graphics_cmd_buffer;
+
+		VkSemaphoreSubmitInfo graphics_signal_semaphore_info{};
+		graphics_signal_semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+		graphics_signal_semaphore_info.stageMask = VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT;
+		graphics_signal_semaphore_info.semaphore = frame.graphics_semaphore;
 
 		VkSemaphoreSubmitInfo wait_semaphore_info{};
 		wait_semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
@@ -388,16 +464,6 @@ bool VulkanContext::RenderFrame()
 		graphics_submit_info.pSignalSemaphoreInfos = &graphics_signal_semaphore_info;
 		graphics_submit_info.waitSemaphoreInfoCount = 1;
 		graphics_submit_info.pWaitSemaphoreInfos = &wait_semaphore_info;
-
-		VkSubmitInfo2 compute_submit_info{};
-		compute_submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
-		compute_submit_info.commandBufferInfoCount = 1;
-		compute_submit_info.pCommandBufferInfos = &compute_cmd_buffer_info;
-		compute_submit_info.signalSemaphoreInfoCount = 1;
-		compute_submit_info.pSignalSemaphoreInfos = &compute_signal_semaphore_info;
-
-		// Submit Compute Queue
-		vkQueueSubmit2(m_logical_device->compute_queue, 1, &compute_submit_info, frame.compute_fence);
 
 		// Submit Graphics Queue
 		vkQueueSubmit2(m_logical_device->graphics_queue, 1, &graphics_submit_info, frame.graphics_fence);
@@ -421,6 +487,10 @@ bool VulkanContext::RenderFrame()
 	}
 
 	m_current_frame = (m_current_frame + 1) % m_frames.size();
+
+	// Return control to the focused context
+	if (!imgui_input_enabled)
+		ImGui::SetCurrentContext(m_cached_imgui_context);
 
 	return true;
 }
@@ -894,6 +964,84 @@ bool VulkanContext::RevalidateAllFrames()
 
 		frame.image = VulkanImage::Create(m_logical_device->handle, m_logical_device->allocator, create_info);
 		frame.generation = m_surface.swapchain.generation;
+	}
+
+	return true;
+}
+
+bool VulkanContext::InitializeImGui()
+{
+	m_imgui_context = ImGui::CreateContext();
+	ImGui::SetCurrentContext(m_imgui_context);
+
+	ImGuiIO& io = ImGui::GetIO();
+	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
+	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
+	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;         // Enable Docking
+	io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+	//io.ConfigViewportsNoAutoMerge = true;
+	//io.ConfigViewportsNoTaskBarIcon = true;
+
+	// Setup Dear ImGui style
+	ImGui::StyleColorsDark();
+
+	// Setup ImGui for this window (if it is the primary viewport
+	if (!ImGui_ImplGlfw_InitForVulkan((GLFWwindow*)m_handle.window->GetNativeHandle(), true))
+	{
+		AURION_CRITICAL("[Vulkan Context] ImGui_ImplGLFW_InitForVulkan Failed!", m_handle.id);
+		return false;
+	}
+
+	std::vector<VkDescriptorPoolSize> pool_sizes = {
+		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1 },
+	};
+
+	VkDescriptorPoolCreateInfo pool_info = {};
+	pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+	pool_info.maxSets = 0;
+
+	for (VkDescriptorPoolSize& pool_size : pool_sizes)
+		pool_info.maxSets += pool_size.descriptorCount;
+
+	pool_info.poolSizeCount = static_cast<uint32_t>(pool_sizes.size());
+	pool_info.pPoolSizes = pool_sizes.data();
+	
+	if (vkCreateDescriptorPool(m_logical_device->handle, &pool_info, nullptr, &m_imgui_desc_pool) != VK_SUCCESS)
+	{
+		AURION_CRITICAL("[Vulkan Context] Failed to initialize ImGui with window [id: %d]! Descriptor Pool Creation Failed", m_handle.id);
+		return false;
+	}
+
+	VkPipelineRenderingCreateInfoKHR pipeline_info{};
+	pipeline_info.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+	pipeline_info.colorAttachmentCount = 1;
+	pipeline_info.pColorAttachmentFormats = &m_surface.swapchain.format.format;
+	pipeline_info.pNext = nullptr;
+
+	ImGui_ImplVulkan_InitInfo vulkan_init_info{};
+	vulkan_init_info.Instance = m_logical_device->vk_instance;
+	vulkan_init_info.PhysicalDevice = m_logical_device->physical_device;
+	vulkan_init_info.Device = m_logical_device->handle;
+	vulkan_init_info.QueueFamily = m_logical_device->graphics_queue_index.value();
+	vulkan_init_info.Queue = m_logical_device->graphics_queue;
+	vulkan_init_info.DescriptorPool = m_imgui_desc_pool;
+	vulkan_init_info.MinImageCount = m_max_frames_in_flight;
+	vulkan_init_info.ImageCount = m_max_frames_in_flight;
+	vulkan_init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+	vulkan_init_info.UseDynamicRendering = true;
+	vulkan_init_info.PipelineRenderingCreateInfo = pipeline_info;
+
+	if (!ImGui_ImplVulkan_Init(&vulkan_init_info))
+	{
+		AURION_CRITICAL("[Vulkan Context] Failed to initialize ImGui with window [id: %d]! ImGui Vulkan Initialization Failed", m_handle.id);
+		return false;
+	}
+
+	if (!ImGui_ImplVulkan_CreateFontsTexture())
+	{
+		AURION_CRITICAL("[Vulkan Context] Failed to initialize ImGui with window [id: %d]! Failed to create fonts texture", m_handle.id);
+		return false;
 	}
 
 	return true;
