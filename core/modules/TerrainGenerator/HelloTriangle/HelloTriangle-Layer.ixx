@@ -11,16 +11,17 @@ export
 		HelloTriangleLayer();
 		virtual ~HelloTriangleLayer();
 
+		void Initialize(VulkanRenderer* renderer);
+
 		virtual void Record(const IGraphicsCommand* command) override;
 
 		virtual void Enable() override;
 
 		virtual void Disable() override;
 
-		void SetGraphicsPipeline(const VulkanPipeline& pipeline);
-
 	private:
+		VulkanDevice* m_logical_device;
 		bool m_enabled;
-		const VulkanPipeline* m_pipeline;
+		VulkanPipeline m_pipeline;
 	};
 }

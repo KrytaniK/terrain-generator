@@ -6,7 +6,7 @@ import HelloTriangle;
 import Vulkan;
 
 HelloTriangleLayer::HelloTriangleLayer()
-	: m_enabled(true), m_pipeline(nullptr)
+	: m_enabled(true), m_pipeline({})
 {
 
 }
@@ -16,9 +16,60 @@ HelloTriangleLayer::~HelloTriangleLayer()
 
 }
 
+void HelloTriangleLayer::Initialize(VulkanRenderer* renderer)
+{
+	m_logical_device = renderer->GetLogicalDevice();
+
+	// Build Pipeline
+	VulkanPipelineFactory pipeline_factory;
+	pipeline_factory.Initialize(m_logical_device, renderer->GetVkPipelineBuffer());
+
+	pipeline_factory.Configure<VulkanGraphicsPipeline>()
+		.BindShader(Vulkan::CreatePipelineShader(renderer->GetLogicalDevice(), VK_SHADER_STAGE_VERTEX_BIT, 0, "assets/shaders/HelloTriangle/V-HelloTriangle.vert", false))
+		.BindShader(Vulkan::CreatePipelineShader(renderer->GetLogicalDevice(), VK_SHADER_STAGE_FRAGMENT_BIT, 0, "assets/shaders/HelloTriangle/F-HelloTriangle.frag", false))
+		.ConfigureVertexInputState()
+		.ConfigureInputAssemblyState()
+			.SetPrimitiveTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
+		.ConfigureRasterizationState()
+			.SetPolygonMode(VK_POLYGON_MODE_FILL)
+			.SetCullMode(VK_CULL_MODE_BACK_BIT)
+			.SetFrontFace(VK_FRONT_FACE_CLOCKWISE)
+			.SetLineWidth(1.0f)
+		.ConfigureColorBlendState()
+			.SetLogicOpEnabled(VK_FALSE)
+			.SetBlendConstants(0.f, 0.f, 0.f, 0.f)
+			.AddColorAttachment()
+				.SetBlendEnabled(VK_FALSE)
+				.SetSrcColorBlendFactor(VK_BLEND_FACTOR_ONE)
+				.SetDstColorBlendFactor(VK_BLEND_FACTOR_ZERO)
+				.SetColorBlendOp(VK_BLEND_OP_ADD)
+				.SetSrcAlphaBlendFactor(VK_BLEND_FACTOR_ONE)
+				.SetDstAlphaBlendFactor(VK_BLEND_FACTOR_ZERO)
+				.SetAlphaBlendOp(VK_BLEND_OP_ADD)
+				.SetColorWriteMask(VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT)
+		.ConfigureViewportState()
+			.AddViewport(VkViewport{})
+			.AddScissor(VkRect2D{})
+		.ConfigureMultisampleState()
+			.SetSampleShadingEnabled(VK_FALSE)
+			.SetRasterizationSamples(VK_SAMPLE_COUNT_1_BIT)
+			.SetMinSampleShading(1.0f)
+			.SetAlphaToCoverageEnabled(VK_FALSE)
+			.SetAlphaToOneEnabled(VK_FALSE)
+		.ConfigureDynamicState()
+			.AddDynamicState(VK_DYNAMIC_STATE_VIEWPORT)
+			.AddDynamicState(VK_DYNAMIC_STATE_SCISSOR)
+		.AddDynamicColorAttachmentFormat(VK_FORMAT_B8G8R8A8_UNORM)
+		.SetDynamicDepthAttachmentFormat(VK_FORMAT_UNDEFINED)
+		.SetDynamicStencilAttachmentFormat(VK_FORMAT_UNDEFINED)
+		.ConfigurePipelineLayout();
+
+	m_pipeline = pipeline_factory.Build()[0];
+}
+
 void HelloTriangleLayer::Record(const IGraphicsCommand* command)
 {
-	if (!m_enabled || !m_pipeline)
+	if (!m_enabled || m_pipeline.handle == VK_NULL_HANDLE)
 		return;
 
 	VulkanRenderCommand* cmd = (VulkanRenderCommand*)(command);
@@ -53,7 +104,7 @@ void HelloTriangleLayer::Record(const IGraphicsCommand* command)
 
 	vkCmdBeginRendering(cmd->graphics_buffer, &render_info);
 
-	vkCmdBindPipeline(cmd->graphics_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline->handle);
+	vkCmdBindPipeline(cmd->graphics_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline.handle);
 
 	//set dynamic viewport and scissor
 	VkViewport viewport = {};
@@ -88,9 +139,4 @@ void HelloTriangleLayer::Enable()
 void HelloTriangleLayer::Disable()
 {
 	m_enabled = false;
-}
-
-void HelloTriangleLayer::SetGraphicsPipeline(const VulkanPipeline& pipeline)
-{
-	m_pipeline = &pipeline;
 }

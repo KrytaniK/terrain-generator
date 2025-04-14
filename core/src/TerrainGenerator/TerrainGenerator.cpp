@@ -12,6 +12,9 @@
 #include <imgui.h>
 
 import TerrainGenerator;
+import HelloSquare;
+import HelloTriangle;
+
 import Aurion.GLFW;
 import Graphics;
 import Vulkan;
@@ -42,7 +45,8 @@ void TerrainGenerator::Load()
 	driver_config.max_window_count = 10;
 
 	m_window_driver.Initialize(driver_config);
-
+	
+	// Vulkan Driver Configuration
 	VulkanDriverConfiguration vk_driver_config{};
 	vk_driver_config.app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
 	vk_driver_config.app_info.pApplicationName = "Terrain Generator";
@@ -100,59 +104,15 @@ void TerrainGenerator::Load()
 		VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME,
 		VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME
 	};
-	vk_device_config.layers = vk_driver_config.validation_layers;
 
-	// Potentially load vulkan driver config from file
+	if (vk_driver_config.enable_validation_layers)
+		vk_device_config.layers = vk_driver_config.validation_layers;
+
 	m_vulkan_driver.SetConfiguration(vk_driver_config);
 	m_vulkan_driver.SetDeviceConfiguration(vk_device_config);
 	m_vulkan_driver.Initialize();
 
 	m_renderer = (VulkanRenderer*)m_vulkan_driver.CreateRenderer();
-
-	VulkanPipelineFactory pipeline_factory;
-	pipeline_factory.Initialize(m_renderer->GetLogicalDevice(), m_renderer->GetVkPipelineBuffer());
-
-	pipeline_factory.Configure<VulkanGraphicsPipeline>()
-		.BindShader(Vulkan::CreatePipelineShader(m_renderer->GetLogicalDevice(), VK_SHADER_STAGE_VERTEX_BIT, 0, "assets/shaders/vert-shader.vert", false))
-		.BindShader(Vulkan::CreatePipelineShader(m_renderer->GetLogicalDevice(), VK_SHADER_STAGE_FRAGMENT_BIT, 0, "assets/shaders/frag-shader.frag", false))
-		.ConfigureVertexInputState()
-		.ConfigureInputAssemblyState()
-			.SetPrimitiveTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST)
-		.ConfigureRasterizationState()
-			.SetPolygonMode(VK_POLYGON_MODE_FILL)
-			.SetCullMode(VK_CULL_MODE_BACK_BIT)
-			.SetFrontFace(VK_FRONT_FACE_CLOCKWISE)
-			.SetLineWidth(1.0f)
-		.ConfigureColorBlendState()
-			.SetLogicOpEnabled(VK_FALSE)
-			.SetBlendConstants(0.f, 0.f, 0.f, 0.f)
-			.AddColorAttachment()
-				.SetBlendEnabled(VK_FALSE)
-				.SetSrcColorBlendFactor(VK_BLEND_FACTOR_ONE)
-				.SetDstColorBlendFactor(VK_BLEND_FACTOR_ZERO)
-				.SetColorBlendOp(VK_BLEND_OP_ADD)
-				.SetSrcAlphaBlendFactor(VK_BLEND_FACTOR_ONE)
-				.SetDstAlphaBlendFactor(VK_BLEND_FACTOR_ZERO)
-				.SetAlphaBlendOp(VK_BLEND_OP_ADD)
-				.SetColorWriteMask(VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT)
-		.ConfigureViewportState()
-			.AddViewport(VkViewport{})
-			.AddScissor(VkRect2D{})
-		.ConfigureMultisampleState()
-			.SetSampleShadingEnabled(VK_FALSE)
-			.SetRasterizationSamples(VK_SAMPLE_COUNT_1_BIT)
-			.SetMinSampleShading(1.0f)
-			.SetAlphaToCoverageEnabled(VK_FALSE)
-			.SetAlphaToOneEnabled(VK_FALSE)
-		.ConfigureDynamicState()
-			.AddDynamicState(VK_DYNAMIC_STATE_VIEWPORT)
-			.AddDynamicState(VK_DYNAMIC_STATE_SCISSOR)
-		.AddDynamicColorAttachmentFormat(VK_FORMAT_B8G8R8A8_UNORM)
-		.SetDynamicDepthAttachmentFormat(VK_FORMAT_UNDEFINED)
-		.SetDynamicStencilAttachmentFormat(VK_FORMAT_UNDEFINED)
-		.ConfigurePipelineLayout();
-	
-	m_render_pipelines = pipeline_factory.Build();
 }
 
 void TerrainGenerator::Start()
@@ -161,30 +121,57 @@ void TerrainGenerator::Start()
 
 	Aurion::WindowConfig window_config;
 
-	// Create the main window
-	window_config.title = "Terrain Generator";
-	Aurion::WindowHandle main_window = m_window_driver.InitWindow(window_config);
+	// Hello Triangle Window
+	{
+		// GLFW window for Hello Triangle
+		window_config.title = "Hello Triangle";
+		Aurion::WindowHandle hello_triangle = m_window_driver.InitWindow(window_config);
 
-	// Create a graphics context for that window
-	VulkanContext* first = m_renderer->CreateContext(main_window);
-	first->SetVSyncEnabled(true);
+		VulkanContext* hello_triangle_ctx = m_renderer->CreateContext(hello_triangle);
+		hello_triangle_ctx->SetVSyncEnabled(true);
+
+		// Add Render Layer
+		HelloTriangleLayer* hello_triangle_layer = hello_triangle_ctx->AddRenderLayer<HelloTriangleLayer>();
+		hello_triangle_layer->Initialize(m_renderer);
+	}
+
+	// Hello Square Window
+	{
+		// GLFW window for Hello Square
+		window_config.title = "Hello Square";
+		Aurion::WindowHandle hello_square = m_window_driver.InitWindow(window_config);
+
+		// Generate Graphics Context
+		VulkanContext* hello_square_ctx = m_renderer->CreateContext(hello_square);
+		hello_square_ctx->SetVSyncEnabled(true);
+
+		// Add Render Layer
+		HelloSquareLayer* hello_square_layer = hello_square_ctx->AddRenderLayer<HelloSquareLayer>();
+		hello_square_layer->Initialize(m_renderer);
+	}
 }
 
 void TerrainGenerator::Run()
 {
-	Aurion::WindowHandle main_window = m_window_driver.GetWindow("Terrain Generator");
-	Aurion::WindowHandle sec_window = m_window_driver.GetWindow("Test Window");
+	std::vector<Aurion::WindowHandle> windows = {
+		m_window_driver.GetWindow("Hello Square"),
+		m_window_driver.GetWindow("Hello Triangle")
+	};
 
 	while (!m_should_close)
 	{
 		// Input Polling and Window Updates
-		main_window.window->Update();
+		for (auto& [id, handle] : windows)
+			handle->Update();
 
 		// Render Commands
 		m_renderer->Render();
 
-		// Close if the main window is no longer open
-		m_should_close = !main_window.window->IsOpen();
+		// Close if there are no windows open
+		m_should_close = true;
+		for (auto& [id, handle] : windows)
+			if (handle->IsOpen())
+				m_should_close = false;
 	}
 }
 
