@@ -19,7 +19,11 @@ export
 
 		static void Allocate(const VulkanDevice* logical_device, VulkanBuffer& buffer, const VkMemoryRequirements& memory_requirements, const uint32_t& memory_type);
 
-		static void Map(const VulkanDevice* logical_device, VulkanBuffer& buffer, const VkDeviceSize& offset, const VkDeviceSize& size, const VkMemoryMapFlags& map_flags, void* data);
+		static void Map(const VulkanDevice* logical_device, VulkanBuffer& buffer, const VkDeviceSize& offset, const VkDeviceSize& size, const VkMemoryMapFlags& map_flags);
+
+		static void Write(VulkanBuffer& buffer, void* data, const size_t& size);
+
+		static void UnMap(const VulkanDevice* logical_device, VulkanBuffer& buffer);
 
 		static void Copy(
 			const VulkanDevice* logical_device,
@@ -34,5 +38,6 @@ export
 		VkBuffer handle = VK_NULL_HANDLE;
 		VkDeviceSize size = 0;
 		VkDeviceMemory memory = VK_NULL_HANDLE;
+		void* mapped = nullptr;
 	};
 }

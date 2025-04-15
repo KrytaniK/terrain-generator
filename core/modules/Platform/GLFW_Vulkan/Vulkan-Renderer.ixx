@@ -46,6 +46,8 @@ export
 		std::vector<VulkanPipeline>& GetVkPipelineBuffer();
 
 		VulkanDevice* GetLogicalDevice();
+
+		const uint32_t& GetMaxFramesInFlight();
 		
 	private:
 		VkInstance m_vk_instance;

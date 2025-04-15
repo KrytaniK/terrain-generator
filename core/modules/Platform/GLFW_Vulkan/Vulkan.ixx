@@ -16,5 +16,6 @@ export import :Image;
 export import :Command;
 
 export import :Buffer;
+export import :Descriptor;
 
 export import :Utility;

@@ -76,16 +76,34 @@ void VulkanBuffer::Allocate(const VulkanDevice* logical_device, VulkanBuffer& bu
 	}
 }
 
-void VulkanBuffer::Map(const VulkanDevice* logical_device, VulkanBuffer& buffer, const VkDeviceSize& offset, const VkDeviceSize& size, const VkMemoryMapFlags& map_flags, void* data)
+void VulkanBuffer::Map(const VulkanDevice* logical_device, VulkanBuffer& buffer, const VkDeviceSize& offset, const VkDeviceSize& size, const VkMemoryMapFlags& map_flags)
 {
-	void* mapped = nullptr;
-	if (vkMapMemory(logical_device->handle, buffer.memory, offset, size, map_flags, &mapped) != VK_SUCCESS)
+	if (vkMapMemory(logical_device->handle, buffer.memory, offset, size, map_flags, &buffer.mapped) != VK_SUCCESS)
 	{
 		AURION_ERROR("[VulkanBuffer::Map] Failed to map buffer memory!");
 		return;
 	}
+}
 
-	std::memcpy(mapped, data, (size_t)size);
+void VulkanBuffer::Write(VulkanBuffer& buffer, void* data, const size_t& size)
+{
+	if (size > buffer.size)
+	{
+		AURION_ERROR("[VulkanBuffer::Write] Failed to write to buffer. Content size [%d] exceeds size of buffer: [%d]", size, buffer.size);
+		return;
+	}
+
+	if (buffer.mapped == nullptr)
+	{
+		AURION_ERROR("[VulkanBuffer::Write] Failed to write to buffer. Buffer memory has not been mapped!");
+		return;
+	}
+
+	std::memcpy(buffer.mapped, data, size);
+}
+
+void VulkanBuffer::UnMap(const VulkanDevice* logical_device, VulkanBuffer& buffer)
+{
 	vkUnmapMemory(logical_device->handle, buffer.memory);
 }
 

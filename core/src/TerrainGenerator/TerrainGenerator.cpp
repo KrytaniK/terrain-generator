@@ -12,8 +12,10 @@
 #include <imgui.h>
 
 import TerrainGenerator;
-import HelloSquare;
 import HelloTriangle;
+import HelloSquare;
+import HelloCube;
+import ImGuiDemo;
 
 import Aurion.GLFW;
 import Graphics;
@@ -121,41 +123,26 @@ void TerrainGenerator::Start()
 
 	Aurion::WindowConfig window_config;
 
-	// Hello Triangle Window
+	// Hello Cube Window
 	{
-		// GLFW window for Hello Triangle
-		window_config.title = "Hello Triangle";
-		Aurion::WindowHandle hello_triangle = m_window_driver.InitWindow(window_config);
-
-		VulkanContext* hello_triangle_ctx = m_renderer->CreateContext(hello_triangle);
-		hello_triangle_ctx->SetVSyncEnabled(true);
-
-		// Add Render Layer
-		HelloTriangleLayer* hello_triangle_layer = hello_triangle_ctx->AddRenderLayer<HelloTriangleLayer>();
-		hello_triangle_layer->Initialize(m_renderer);
-	}
-
-	// Hello Square Window
-	{
-		// GLFW window for Hello Square
-		window_config.title = "Hello Square";
-		Aurion::WindowHandle hello_square = m_window_driver.InitWindow(window_config);
+		// GLFW window for Hello Cube
+		window_config.title = "Hello Cube";
+		Aurion::WindowHandle hello_cube = m_window_driver.InitWindow(window_config);
 
 		// Generate Graphics Context
-		VulkanContext* hello_square_ctx = m_renderer->CreateContext(hello_square);
-		hello_square_ctx->SetVSyncEnabled(true);
+		VulkanContext* hello_cube_ctx = m_renderer->CreateContext(hello_cube);
+		hello_cube_ctx->SetVSyncEnabled(false);
 
 		// Add Render Layer
-		HelloSquareLayer* hello_square_layer = hello_square_ctx->AddRenderLayer<HelloSquareLayer>();
-		hello_square_layer->Initialize(m_renderer);
+		HelloCubeLayer* hello_cube_layer = hello_cube_ctx->AddRenderLayer<HelloCubeLayer>();
+		hello_cube_layer->Initialize(m_renderer);
 	}
 }
 
 void TerrainGenerator::Run()
 {
 	std::vector<Aurion::WindowHandle> windows = {
-		m_window_driver.GetWindow("Hello Square"),
-		m_window_driver.GetWindow("Hello Triangle")
+		m_window_driver.GetWindow("Hello Cube")
 	};
 
 	while (!m_should_close)

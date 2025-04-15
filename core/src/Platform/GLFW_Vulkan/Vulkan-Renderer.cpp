@@ -130,3 +130,8 @@ VulkanDevice* VulkanRenderer::GetLogicalDevice()
 {
 	return &m_logical_device;
 }
+
+const uint32_t& VulkanRenderer::GetMaxFramesInFlight()
+{
+	return m_max_in_flight_frames;
+}

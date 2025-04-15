@@ -18,13 +18,13 @@ export
 		HelloSquareLayer();
 		virtual ~HelloSquareLayer();
 
+		void Initialize(VulkanRenderer* renderer);
+
 		virtual void Record(const IGraphicsCommand* command) override;
 
 		virtual void Enable() override;
 
 		virtual void Disable() override;
-
-		void Initialize(VulkanRenderer* renderer);
 
 	private:
 		bool m_enabled;
