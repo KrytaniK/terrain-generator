@@ -118,8 +118,8 @@ workspace "TerrainGenerator"
             buildoptions{ "/MDd", GetAllModuleFiles("third_party/aurion-core/lib/debug/modules")}
 
             postbuildcommands {
-                "{COPYFILE} third_party/aurion-core/lib/debug/AurionCore.dll %{wks.location}/build/bin/" .. outputdir .. "/%{prj.name}/",
-                "{COPYFILE} third_party/GLFW/lib/glfw3.dll %{wks.location}/build/bin/" .. outputdir .. "/%{prj.name}/"
+                "{COPY} third_party/aurion-core/lib/debug/AurionCore.dll %{wks.location}/build/bin/" .. outputdir .. "/%{prj.name}/",
+                "{COPY} third_party/GLFW/lib/glfw3.dll %{wks.location}/build/bin/" .. outputdir .. "/%{prj.name}/"
             }
 
             links {
@@ -139,8 +139,8 @@ workspace "TerrainGenerator"
 
             buildoptions{ "/MD", GetAllModuleFiles("third_party/aurion-core/lib/modules")}
             postbuildcommands {
-                "{COPYFILE} third_party/aurion-core/lib/AurionCore.dll %{wks.location}/build/bin/" .. outputdir .. "/%{prj.name}/",
-                "{COPYFILE} third_party/GLFW/lib/glfw3.dll %{wks.location}/build/bin/" .. outputdir .. "/%{prj.name}/"
+                "{COPY} third_party/aurion-core/lib/AurionCore.dll %{wks.location}/build/bin/" .. outputdir .. "/%{prj.name}/",
+                "{COPY} third_party/GLFW/lib/glfw3.dll %{wks.location}/build/bin/" .. outputdir .. "/%{prj.name}/"
             }
 
             links { 
@@ -158,8 +158,8 @@ workspace "TerrainGenerator"
 
             buildoptions{ "/MD", GetAllModuleFiles("third_party/aurion-core/lib/modules")}
             postbuildcommands {
-                "{COPYFILE} third_party/aurion-core/lib/AurionCore.dll %{wks.location}/build/bin/" .. outputdir .. "/%{prj.name}/",
-                "{COPYFILE} third_party/GLFW/lib/glfw3.dll %{wks.location}/build/bin/" .. outputdir .. "/%{prj.name}/"
+                "{COPY} third_party/aurion-core/lib/AurionCore.dll %{wks.location}/build/bin/" .. outputdir .. "/%{prj.name}/",
+                "{COPY} third_party/GLFW/lib/glfw3.dll %{wks.location}/build/bin/" .. outputdir .. "/%{prj.name}/"
             }
 
             links { 
