@@ -25,7 +25,7 @@ import Vulkan;
 import Aurion.Window;
 
 VulkanContext::VulkanContext()
-	: m_handle({}), m_max_frames_in_flight(0), m_logical_device(nullptr),
+	: m_handle({0, nullptr}), m_max_frames_in_flight(0), m_logical_device(nullptr),
 	m_surface({}), m_frames(), m_current_frame(0), m_render_as_ui(false), 
 	m_enabled(true), m_vsync_enabled(true)
 {
@@ -126,7 +126,8 @@ void VulkanContext::SetWindow(const Aurion::WindowHandle& handle)
 	glfwSetFramebufferSizeCallback((GLFWwindow*)handle.window->GetNativeHandle(), [](GLFWwindow* window, int width, int height) {
 		VulkanContext* _this = (VulkanContext*)glfwGetWindowUserPointer(window);
 
-		_this->RenderFrame();
+		//_this->RenderFrame();
+		_this->CreateSwapchain(_this->m_surface.swapchain.handle);
 	});
 
 	glfwSetWindowCloseCallback((GLFWwindow*)handle.window->GetNativeHandle(), [](GLFWwindow* window) {
@@ -704,7 +705,7 @@ bool VulkanContext::CreateSwapchain(const VkSwapchainKHR old_swapchain, const Vk
 	createInfo.imageArrayLayers = 1;
 
 	// For use with dynamic rendering
-	createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+	createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
 	uint32_t queueFamilyIndices[] = { m_logical_device->graphics_queue_index.value(), m_surface.present_queue_index.value() };
 	if (m_logical_device->graphics_queue_index.value() != m_surface.present_queue_index.value())

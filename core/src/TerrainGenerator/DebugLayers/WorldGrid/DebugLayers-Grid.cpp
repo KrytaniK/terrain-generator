@@ -180,7 +180,7 @@ void DebugGridLayer::Initialize(const DebugGridConfig* config, VulkanRenderer* r
 				.AddScissor(VkRect2D{})
 			.ConfigureMultisampleState()
 				.SetSampleShadingEnabled(VK_FALSE)
-				.SetRasterizationSamples(VK_SAMPLE_COUNT_8_BIT)
+				.SetRasterizationSamples(VK_SAMPLE_COUNT_1_BIT)
 				.SetMinSampleShading(1.0f)
 				.SetAlphaToCoverageEnabled(VK_FALSE)
 				.SetAlphaToOneEnabled(VK_FALSE)
@@ -199,8 +199,8 @@ void DebugGridLayer::Record(const IGraphicsCommand* command)
 {
 	VulkanRenderCommand* cmd = (VulkanRenderCommand*)command;
 
-	if (cmd->render_extent.width != m_msaa_image.extent.width || cmd->render_extent.height != m_msaa_image.extent.height)
-		this->RevalidateImage(cmd->render_extent);
+	//if (cmd->render_extent.width != m_msaa_image.extent.width || cmd->render_extent.height != m_msaa_image.extent.height)
+		//this->RevalidateImage(cmd->render_extent);
 
 
 	// Update View based on window size
@@ -208,7 +208,7 @@ void DebugGridLayer::Record(const IGraphicsCommand* command)
 	this->UpdateViewMatrix(glm::radians(45.f), aspect_ratio, 0.1f, 1000.f);
 	VulkanBuffer::Write(m_mvp_buffers[cmd->current_frame], &m_mvp_matrix, sizeof(ModelViewProjectionMatrix));
 
-	VulkanImage::TransitionLayouts(cmd->graphics_buffer, {
+	/*VulkanImage::TransitionLayouts(cmd->graphics_buffer, {
 		VulkanImage::CreateLayoutTransition(
 			m_msaa_image.image,
 			VK_IMAGE_LAYOUT_UNDEFINED,
@@ -218,19 +218,19 @@ void DebugGridLayer::Record(const IGraphicsCommand* command)
 			0,
 			VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT
 		)
-	});
+	});*/
 
 	// Begin Rendering
 	{
 		VkRenderingAttachmentInfo color_attachment{
 			.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-			.imageView = m_msaa_image.view,
+			.imageView = cmd->render_view,
 			.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-			.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT,
-			.resolveImageView = cmd->render_view,
-			.resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+			//.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT,
+			//.resolveImageView = cmd->render_view,
+			//.resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 			.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-			.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+			.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
 			.clearValue = VkClearValue{
 				.color = VkClearColorValue{
 					0.15f,
@@ -320,10 +320,10 @@ void DebugGridLayer::UpdateViewMatrix(float fov, float aspect, float near_clip, 
 	float time = std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
 
 	// Rotate the model around the z-axis at 90-degrees per second
-	m_mvp_matrix.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(15.f), glm::vec3(0.0f, 0.0f, 1.f));
+	m_mvp_matrix.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(5.f), glm::vec3(0.0f, 0.0f, 1.f));
 	//m_mvp_matrix.model = glm::mat4(1.0f);
 
-	glm::vec3 cam_pos(10.0f, 10.f, 5.f);
+	glm::vec3 cam_pos(0.1f, 10.f, 1.f);
 	glm::vec3 obj_pos(0.0f, 0.0f, 0.0f);
 	glm::vec3 up(0.f, 0.f, 1.f);
 	m_mvp_matrix.view = glm::lookAt(cam_pos, obj_pos, up);

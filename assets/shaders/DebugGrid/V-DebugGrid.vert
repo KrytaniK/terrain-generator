@@ -1,6 +1,8 @@
 #version 450
 
 layout(location = 0) out vec3 world_pos;
+layout(location = 1) out float grid_scale;
+layout(location = 2) out vec3 cam_pos;
 
 layout(binding = 0) uniform ModelViewProjection {
     mat4 model;
@@ -30,4 +32,6 @@ void main()
 
 	// Output the vertex position (in world space), and the camera position
 	world_pos = pos;
+	grid_scale = scale;
+	cam_pos = inverse(mvp.view)[3].xyz;
 }
