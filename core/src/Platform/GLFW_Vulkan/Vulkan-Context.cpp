@@ -61,9 +61,7 @@ VulkanContext::~VulkanContext()
 		vkDestroyFence(m_logical_device->handle, frame.graphics_fence, nullptr);
 
 		// Cleanup frame image
-		vkDestroySampler(m_logical_device->handle, frame.image.sampler, nullptr);
-		vkDestroyImageView(m_logical_device->handle, frame.image.view, nullptr);
-		vmaDestroyImage(m_logical_device->allocator, frame.image.image, frame.image.allocation);
+		VulkanImage::Destroy(m_logical_device, frame.image);
 	}
 
 	// Clean up VkSwapchainKHR
@@ -788,6 +786,9 @@ bool VulkanContext::GenerateFrameData()
 			create_info.usage_flags |= VK_IMAGE_USAGE_SAMPLED_BIT;
 
 			create_info.aspect_flags = VK_IMAGE_ASPECT_COLOR_BIT;
+
+			// Enable 4x MSAA by default
+			create_info.msaa_samples = VK_SAMPLE_COUNT_1_BIT;
 
 			frame.image = VulkanImage::Create(m_logical_device->handle, m_logical_device->allocator, create_info);
 		}

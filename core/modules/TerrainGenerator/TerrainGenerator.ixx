@@ -7,6 +7,7 @@ export module TerrainGenerator;
 import Aurion.Application;
 import Aurion.GLFW;
 
+import DebugLayers;
 import Graphics;
 import Vulkan;
 
@@ -32,5 +33,6 @@ export
 		VulkanRenderer* m_renderer;
 		std::span<VulkanPipeline> m_render_pipelines;
 		bool m_should_close;
+		DebugGridConfig m_debug_grid_config;
 	};
 }

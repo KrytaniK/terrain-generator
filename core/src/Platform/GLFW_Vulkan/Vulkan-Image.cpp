@@ -27,7 +27,7 @@ VulkanImage VulkanImage::Create(const VkDevice& logical_device, const VmaAllocat
 	imageCreateInfo.arrayLayers = 1;
 
 	// For MSAA
-	imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+	imageCreateInfo.samples = create_info.msaa_samples;
 
 	// Optimal tiling
 	imageCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
@@ -72,6 +72,13 @@ VulkanImage VulkanImage::Create(const VkDevice& logical_device, const VmaAllocat
 	vkCreateSampler(logical_device, &samplerInfo, nullptr, &out_image.sampler);
 
 	return out_image;
+}
+
+void VulkanImage::Destroy(const VulkanDevice* logical_device, const VulkanImage& image)
+{
+	vkDestroySampler(logical_device->handle, image.sampler, nullptr);
+	vkDestroyImageView(logical_device->handle, image.view, nullptr);
+	vmaDestroyImage(logical_device->allocator, image.image, image.allocation);
 }
 
 VkImageMemoryBarrier2 VulkanImage::CreateLayoutTransition(const VkImage& image, const VkImageLayout& src, const VkImageLayout& dst, const VkPipelineStageFlags2& src_stage, const VkPipelineStageFlags2& dst_stage, const VkAccessFlags2& src_access, const VkAccessFlags2& dst_access)

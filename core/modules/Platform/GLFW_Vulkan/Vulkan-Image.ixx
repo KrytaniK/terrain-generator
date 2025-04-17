@@ -7,6 +7,8 @@ module;
 
 export module Vulkan:Image;
 
+import :Device;
+
 export
 {
 	struct VulkanImageCreateInfo
@@ -16,12 +18,15 @@ export
 		VkExtent3D extent{};
 		VkImageUsageFlags usage_flags = 0;
 		VkImageAspectFlags aspect_flags = 0;
+		VkSampleCountFlagBits msaa_samples = VK_SAMPLE_COUNT_1_BIT;
 		VkDescriptorSet descriptor_set = VK_NULL_HANDLE;
 	};
 
 	struct VulkanImage
 	{
 		static VulkanImage Create(const VkDevice& logical_device, const VmaAllocator& allocator, const VulkanImageCreateInfo& create_info);
+
+		static void Destroy(const VulkanDevice* logical_device, const VulkanImage& image);
 		
 		static VkImageMemoryBarrier2 CreateLayoutTransition(
 			const VkImage& image, 

@@ -1,21 +1,10 @@
 #include <macros/AurionLog.h>
 
-#include <functional>
-#include <span>
-#include <memory>
-
-#include <chrono>
-
-#include <GLFW/glfw3.h>
-
 #include <vulkan/vulkan.h>
-#include <imgui.h>
 
 import TerrainGenerator;
-import HelloTriangle;
-import HelloSquare;
-import HelloCube;
-import ImGuiDemo;
+import DebugLayers;
+import DebugOverlays;
 
 import Aurion.GLFW;
 import Graphics;
@@ -125,24 +114,26 @@ void TerrainGenerator::Start()
 
 	// Hello Cube Window
 	{
-		// GLFW window for Hello Cube
-		window_config.title = "Hello Cube";
-		Aurion::WindowHandle hello_cube = m_window_driver.InitWindow(window_config);
+		// GLFW window
+		window_config.title = "Debug Grid";
+		Aurion::WindowHandle debug_grid = m_window_driver.InitWindow(window_config);
 
 		// Generate Graphics Context
-		VulkanContext* hello_cube_ctx = m_renderer->CreateContext(hello_cube);
-		hello_cube_ctx->SetVSyncEnabled(false);
+		VulkanContext* debug_grid_ctx = m_renderer->CreateContext(debug_grid);
+		debug_grid_ctx->SetVSyncEnabled(false);
 
-		// Add Render Layer
-		HelloCubeLayer* hello_cube_layer = hello_cube_ctx->AddRenderLayer<HelloCubeLayer>();
-		hello_cube_layer->Initialize(m_renderer);
+		// Add Debug Grid
+		DebugGridLayer* debug_grid_layer = debug_grid_ctx->AddRenderLayer<DebugGridLayer>();
+		DebugGridOverlay* debug_grid_overlay = debug_grid_ctx->AddRenderOverlay<DebugGridOverlay>();
+		debug_grid_layer->Initialize(&m_debug_grid_config, m_renderer, debug_grid);
+		debug_grid_overlay->Initialize(&m_debug_grid_config);
 	}
 }
 
 void TerrainGenerator::Run()
 {
 	std::vector<Aurion::WindowHandle> windows = {
-		m_window_driver.GetWindow("Hello Cube")
+		m_window_driver.GetWindow("Debug Grid")
 	};
 
 	while (!m_should_close)
