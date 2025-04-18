@@ -19,8 +19,6 @@ DebugGridLayer::DebugGridLayer()
 
 DebugGridLayer::~DebugGridLayer()
 {
-	VulkanImage::Destroy(m_logical_device, m_msaa_image);
-
 	VulkanDescriptorPool::Destroy(m_logical_device, m_mvp_desc_pool);
 	m_mvp_desc_sets.clear();
 
@@ -116,34 +114,6 @@ void DebugGridLayer::Initialize(const DebugGridConfig* config, VulkanRenderer* r
 	m_config_pc.size = sizeof(DebugGridConfig);
 	m_config_pc.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
-	// Create MSAA image
-	VkPhysicalDeviceLimits limits = m_logical_device->properties.properties.limits;
-	if (!(limits.framebufferColorSampleCounts & VK_SAMPLE_COUNT_8_BIT))
-	{
-		AURION_ERROR("Physical Device does not support a sample count of 8");
-		return;
-	}
-
-	VulkanImageCreateInfo create_info{};
-	create_info.extent = VkExtent3D{
-		.width = window_handle.window->GetWidth(),
-		.height = window_handle.window->GetHeight(),
-		.depth = 1
-	};
-
-	// Ensure each image matches the swapchain format
-	create_info.format = VK_FORMAT_B8G8R8A8_UNORM;
-
-	create_info.usage_flags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-	create_info.usage_flags |= VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT;
-
-	create_info.aspect_flags = VK_IMAGE_ASPECT_COLOR_BIT;
-
-	// Enable 4x MSAA by default
-	create_info.msaa_samples = VK_SAMPLE_COUNT_8_BIT;
-
-	m_msaa_image = VulkanImage::Create(m_logical_device->handle, m_logical_device->allocator, create_info);
-
 	// Build Pipeline
 	{
 		VulkanPipelineFactory pipeline_factory;
@@ -199,26 +169,10 @@ void DebugGridLayer::Record(const IGraphicsCommand* command)
 {
 	VulkanRenderCommand* cmd = (VulkanRenderCommand*)command;
 
-	//if (cmd->render_extent.width != m_msaa_image.extent.width || cmd->render_extent.height != m_msaa_image.extent.height)
-		//this->RevalidateImage(cmd->render_extent);
-
-
 	// Update View based on window size
 	float aspect_ratio = cmd->render_extent.width / ((float)cmd->render_extent.height);
 	this->UpdateViewMatrix(glm::radians(45.f), aspect_ratio, 0.1f, 1000.f);
 	VulkanBuffer::Write(m_mvp_buffers[cmd->current_frame], &m_mvp_matrix, sizeof(ModelViewProjectionMatrix));
-
-	/*VulkanImage::TransitionLayouts(cmd->graphics_buffer, {
-		VulkanImage::CreateLayoutTransition(
-			m_msaa_image.image,
-			VK_IMAGE_LAYOUT_UNDEFINED,
-			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-			VK_PIPELINE_STAGE_2_NONE,
-			VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-			0,
-			VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT
-		)
-	});*/
 
 	// Begin Rendering
 	{
@@ -323,7 +277,7 @@ void DebugGridLayer::UpdateViewMatrix(float fov, float aspect, float near_clip, 
 	m_mvp_matrix.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(5.f), glm::vec3(0.0f, 0.0f, 1.f));
 	//m_mvp_matrix.model = glm::mat4(1.0f);
 
-	glm::vec3 cam_pos(0.1f, 10.f, 1.f);
+	glm::vec3 cam_pos(0.1f, 20.f, 10.f);
 	glm::vec3 obj_pos(0.0f, 0.0f, 0.0f);
 	glm::vec3 up(0.f, 0.f, 1.f);
 	m_mvp_matrix.view = glm::lookAt(cam_pos, obj_pos, up);
@@ -336,35 +290,4 @@ void DebugGridLayer::UpdateViewMatrix(float fov, float aspect, float near_clip, 
 	);
 
 	m_mvp_matrix.projection[1][1] *= -1;
-}
-
-void DebugGridLayer::RevalidateImage(const VkExtent3D& new_extent)
-{
-	vkDeviceWaitIdle(m_logical_device->handle);
-
-	// Destroy old image data
-	{
-		vkDestroySampler(m_logical_device->handle, m_msaa_image.sampler, nullptr);
-		vkDestroyImageView(m_logical_device->handle, m_msaa_image.view, nullptr);
-		vmaDestroyImage(m_logical_device->allocator, m_msaa_image.image, m_msaa_image.allocation);
-	}
-
-	VulkanImageCreateInfo create_info{};
-	create_info.extent = VkExtent3D{
-		.width = new_extent.width,
-		.height = new_extent.height,
-		.depth = 1
-	};
-
-	// Ensure each image matches the swapchain format
-	create_info.format = VK_FORMAT_B8G8R8A8_UNORM;
-
-	create_info.usage_flags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-	create_info.usage_flags |= VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT;
-
-	create_info.aspect_flags = VK_IMAGE_ASPECT_COLOR_BIT;
-
-	create_info.msaa_samples = VK_SAMPLE_COUNT_8_BIT;
-
-	m_msaa_image = VulkanImage::Create(m_logical_device->handle, m_logical_device->allocator, create_info);
 }

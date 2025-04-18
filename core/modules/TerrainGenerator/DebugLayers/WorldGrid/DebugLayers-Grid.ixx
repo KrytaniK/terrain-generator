@@ -48,8 +48,6 @@ export
 	private:
 		void UpdateViewMatrix(float fov, float aspect, float near_clip, float far_clip);
 
-		void RevalidateImage(const VkExtent3D& new_extent);
-
 	private:
 		const DebugGridConfig* m_config;
 		bool m_enabled;
@@ -61,9 +59,6 @@ export
 		VulkanDescriptorSetLayout m_mvp_desc_layout;
 		std::vector<VkDescriptorSet> m_mvp_desc_sets;
 		std::vector<VulkanBuffer> m_mvp_buffers;
-
-		// Multi-sample image
-		VulkanImage m_msaa_image;
 
 		// Config Push Constant
 		VkPushConstantRange m_config_pc;

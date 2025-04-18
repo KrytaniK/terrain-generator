@@ -23,11 +23,11 @@ void main() {
 	// Grid-Space UV
 	vec2 uv = world_pos.xy;
 
-	// Anti-aliasing using screen-space derivatives
+	// Compute Grid Line
 	vec2 grid = 0.5 *  abs(fract(uv)) / fwidth(uv);
 	float line = min(grid.x, grid.y);
 
-	// Apply some smoothing
+	// Apply some smoothing (Anti-Aliasing)
 	vec2 dist_to_line = abs(fract(uv) - 0.5);
 	vec2 smoothing = smoothstep(vec2(0.5), 0.5 - fwidth(uv) * 2.0, dist_to_line);
 
