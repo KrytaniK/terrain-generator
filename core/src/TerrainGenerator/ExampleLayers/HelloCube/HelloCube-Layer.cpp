@@ -266,7 +266,7 @@ void HelloCubeLayer::Record(const IGraphicsCommand* command)
 
 	// Update MVP matrix and write to the relevant buffer
 	float aspect_ratio = render_command->render_extent.width / ((float)render_command->render_extent.height);
-	this->Rotate(glm::radians(45.f), aspect_ratio, 0.1f, 10.f);
+	this->Rotate(glm::radians(45.f), aspect_ratio, 0.1f, 1000.f);
 	VulkanBuffer::Write(m_mvp_buffers[render_command->current_frame], &m_mvp_matrix, sizeof(ModelViewProjectionMatrix));
 
 	// Begin Rendering
@@ -275,7 +275,7 @@ void HelloCubeLayer::Record(const IGraphicsCommand* command)
 			.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
 			.imageView = render_command->render_view,
 			.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-			.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+			.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
 			.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
 			.clearValue = VkClearValue{
 				.color = VkClearColorValue{
@@ -366,11 +366,12 @@ void HelloCubeLayer::Rotate(float fov, float aspect, float near_clip, float far_
 	float time = std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
 
 	// Rotate the model around the z-axis at 90-degrees per second
-	m_mvp_matrix.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(45.f), glm::vec3(0.5f, 0.5f, 1.f));
+	m_mvp_matrix.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(5.f), glm::vec3(0.0f, 0.0f, 1.f));
+	//m_mvp_matrix.model = glm::mat4(1.0f);
 
 	// View the geometry from an angle
-	glm::vec3 cam_pos(0.f, -5.f, 3.f);
-	glm::vec3 obj_pos(0.f, 0.f, 0.f);
+	glm::vec3 cam_pos(10.f, 10.f, 5.f);
+	glm::vec3 obj_pos(0.0f, 0.0f, 0.0f);
 	glm::vec3 up(0.f, 0.f, 1.f);
 	m_mvp_matrix.view = glm::lookAt(cam_pos, obj_pos, up);
 

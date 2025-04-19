@@ -41,8 +41,22 @@ void main() {
 	// Final grid value
 	float alpha = thickness * fade;
 
+	// Base Colors
 	vec4 cell_color = vec4(0.0, 0.0, 0.0, 0.0);
 	vec4 line_color = vec4(0.5, 0.5, 0.5, 1.0);
 
-	out_color = mix(cell_color, line_color, alpha);
+	// Axis Colors
+	vec4 x_axis_color = vec4(1.0, 0.0, 0.0, 1.0);
+	vec4 y_axis_color = vec4(0.0, 1.0, 0.0, 1.0);
+
+	vec4 final_color = line_color;
+
+	// Blend factors for x/y axis lines.
+	float x_blend_factor = 1.0 - smoothstep(0.0, alpha, length(uv.y) + smoothing.y);
+	float y_blend_factor = 1.0 - smoothstep(0.0, alpha, length(uv.x) + smoothing.x);
+
+	final_color = mix(line_color, x_axis_color, x_blend_factor);
+	final_color = mix(final_color, y_axis_color, y_blend_factor);
+
+	out_color = mix(cell_color, final_color, alpha);
 } 

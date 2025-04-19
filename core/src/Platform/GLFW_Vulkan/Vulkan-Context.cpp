@@ -126,7 +126,6 @@ void VulkanContext::SetWindow(const Aurion::WindowHandle& handle)
 	glfwSetFramebufferSizeCallback((GLFWwindow*)handle.window->GetNativeHandle(), [](GLFWwindow* window, int width, int height) {
 		VulkanContext* _this = (VulkanContext*)glfwGetWindowUserPointer(window);
 
-		//_this->RenderFrame();
 		_this->CreateSwapchain(_this->m_surface.swapchain.handle);
 	});
 

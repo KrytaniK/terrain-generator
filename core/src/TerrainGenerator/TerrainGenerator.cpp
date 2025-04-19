@@ -6,6 +6,8 @@ import TerrainGenerator;
 import DebugLayers;
 import DebugOverlays;
 
+import HelloCube;
+
 import Aurion.GLFW;
 import Graphics;
 import Vulkan;
@@ -88,7 +90,7 @@ void TerrainGenerator::Load()
 	// Package features/properties/flags/extensions into device requirements
 	VulkanDeviceConfiguration vk_device_config{};
 	vk_device_config.features = deviceFeatures2;
-	vk_device_config.device_type = VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU; // Prefer dedicated GPU
+	vk_device_config.device_type = VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU; // Prefer dedicated GPU
 	vk_device_config.allocator_flags = 0;
 	vk_device_config.extensions = {
 		VK_KHR_SWAPCHAIN_EXTENSION_NAME,
@@ -127,6 +129,10 @@ void TerrainGenerator::Start()
 		DebugGridOverlay* debug_grid_overlay = debug_grid_ctx->AddRenderOverlay<DebugGridOverlay>();
 		debug_grid_layer->Initialize(&m_debug_grid_config, m_renderer, debug_grid);
 		debug_grid_overlay->Initialize(&m_debug_grid_config);
+
+		// Render Cube
+		HelloCubeLayer* hc_layer = debug_grid_ctx->AddRenderLayer<HelloCubeLayer>();
+		hc_layer->Initialize(m_renderer);
 	}
 }
 

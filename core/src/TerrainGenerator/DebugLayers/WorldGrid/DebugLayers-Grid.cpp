@@ -277,7 +277,7 @@ void DebugGridLayer::UpdateViewMatrix(float fov, float aspect, float near_clip, 
 	m_mvp_matrix.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(5.f), glm::vec3(0.0f, 0.0f, 1.f));
 	//m_mvp_matrix.model = glm::mat4(1.0f);
 
-	glm::vec3 cam_pos(0.1f, 20.f, 10.f);
+	glm::vec3 cam_pos(10.f, 10.f, 5.f);
 	glm::vec3 obj_pos(0.0f, 0.0f, 0.0f);
 	glm::vec3 up(0.f, 0.f, 1.f);
 	m_mvp_matrix.view = glm::lookAt(cam_pos, obj_pos, up);
