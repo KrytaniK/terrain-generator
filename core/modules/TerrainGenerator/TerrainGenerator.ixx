@@ -29,6 +29,9 @@ export
 
 	private:
 		Aurion::GLFWDriver m_window_driver;
+		Aurion::GLFWInputContext m_input_context;
+		Aurion::GLFWInputDevice* m_mouse;
+		Aurion::GLFWInputDevice* m_keyboard;
 		VulkanDriver m_vulkan_driver;
 		VulkanRenderer* m_renderer;
 		std::span<VulkanPipeline> m_render_pipelines;

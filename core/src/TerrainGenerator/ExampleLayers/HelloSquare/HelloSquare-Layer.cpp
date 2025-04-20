@@ -142,7 +142,7 @@ void HelloSquareLayer::Record(const IGraphicsCommand* command)
 	if (!m_enabled || m_pipeline.handle == VK_NULL_HANDLE)
 		return;
 
-	VulkanRenderCommand* render_command = (VulkanRenderCommand*)command;
+	VulkanCommand* render_command = (VulkanCommand*)command;
 
 	// Copy Buffer Data
 	VulkanBuffer::Copy(m_logical_device, render_command->graphics_buffer, m_staging_buffer, m_combined_buffer, 0, 0, m_staging_buffer.size);
@@ -151,7 +151,7 @@ void HelloSquareLayer::Record(const IGraphicsCommand* command)
 	{
 		VkRenderingAttachmentInfo color_attachment{
 			.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-			.imageView = render_command->render_view,
+			.imageView = render_command->color_image.view,
 			.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 			.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
 			.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
@@ -168,7 +168,7 @@ void HelloSquareLayer::Record(const IGraphicsCommand* command)
 		VkRenderingInfo render_info{
 			.sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
 			.renderArea = VkRect2D{
-				.extent = VkExtent2D{ render_command->render_extent.width, render_command->render_extent.height }
+				.extent = VkExtent2D{ render_command->color_image.extent.width, render_command->color_image.extent.height }
 			},
 			.layerCount = 1,
 			.viewMask = 0,
@@ -185,8 +185,8 @@ void HelloSquareLayer::Record(const IGraphicsCommand* command)
 	VkViewport viewport = {};
 	viewport.x = 0;
 	viewport.y = 0;
-	viewport.width = static_cast<float>(render_command->render_extent.width);
-	viewport.height = static_cast<float>(render_command->render_extent.height);
+	viewport.width = static_cast<float>(render_command->color_image.extent.width);
+	viewport.height = static_cast<float>(render_command->color_image.extent.height);
 	viewport.minDepth = 0.f;
 	viewport.maxDepth = 1.f;
 
@@ -195,8 +195,8 @@ void HelloSquareLayer::Record(const IGraphicsCommand* command)
 	VkRect2D scissor = {};
 	scissor.offset.x = 0;
 	scissor.offset.y = 0;
-	scissor.extent.width = render_command->render_extent.width;
-	scissor.extent.height = render_command->render_extent.height;
+	scissor.extent.width = render_command->color_image.extent.width;
+	scissor.extent.height = render_command->color_image.extent.height;
 
 	vkCmdSetScissor(render_command->graphics_buffer, 0, 1, &scissor);
 

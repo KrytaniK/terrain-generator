@@ -72,12 +72,12 @@ void HelloTriangleLayer::Record(const IGraphicsCommand* command)
 	if (!m_enabled || m_pipeline.handle == VK_NULL_HANDLE)
 		return;
 
-	VulkanRenderCommand* cmd = (VulkanRenderCommand*)(command);
+	VulkanCommand* cmd = (VulkanCommand*)(command);
 
 	// Draw Triangle
 	VkRenderingAttachmentInfo color_attachment{
 		.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-		.imageView = cmd->render_view,
+		.imageView = cmd->color_image.view,
 		.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
 		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
@@ -94,7 +94,7 @@ void HelloTriangleLayer::Record(const IGraphicsCommand* command)
 	VkRenderingInfo render_info{
 		.sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
 		.renderArea = VkRect2D{
-			.extent = VkExtent2D{ cmd->render_extent.width, cmd->render_extent.height }
+			.extent = VkExtent2D{ cmd->color_image.extent.width, cmd->color_image.extent.height }
 		},
 		.layerCount = 1,
 		.viewMask = 0,
@@ -110,8 +110,8 @@ void HelloTriangleLayer::Record(const IGraphicsCommand* command)
 	VkViewport viewport = {};
 	viewport.x = 0;
 	viewport.y = 0;
-	viewport.width = static_cast<float>(cmd->render_extent.width);
-	viewport.height = static_cast<float>(cmd->render_extent.height);
+	viewport.width = static_cast<float>(cmd->color_image.extent.width);
+	viewport.height = static_cast<float>(cmd->color_image.extent.height);
 	viewport.minDepth = 0.f;
 	viewport.maxDepth = 1.f;
 
@@ -120,8 +120,8 @@ void HelloTriangleLayer::Record(const IGraphicsCommand* command)
 	VkRect2D scissor = {};
 	scissor.offset.x = 0;
 	scissor.offset.y = 0;
-	scissor.extent.width = cmd->render_extent.width;
-	scissor.extent.height = cmd->render_extent.height;
+	scissor.extent.width = cmd->color_image.extent.width;
+	scissor.extent.height = cmd->color_image.extent.height;
 
 	vkCmdSetScissor(cmd->graphics_buffer, 0, 1, &scissor);
 

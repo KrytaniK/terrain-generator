@@ -94,6 +94,8 @@ export
 		bool RevalidateCurrentFrame();
 		bool RevalidateAllFrames();
 
+		VkFormat ChooseDepthFormat(const std::vector<VkFormat>& candidates, const VkImageTiling& tiling, const VkFormatFeatureFlags& features);
+
 		bool InitializeImGui();
 
 	private:

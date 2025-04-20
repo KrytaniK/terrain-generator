@@ -15,10 +15,7 @@
 #include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_vulkan.h>
 
-// TODO:
-//	Copying images to the swapchain might introduce inconsistencies between
-//		image sizes. To fix this, frame images need to be re-created when the
-//		swapchain gets recreated
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE
 
 import Graphics;
 import Vulkan;
@@ -60,8 +57,10 @@ VulkanContext::~VulkanContext()
 		vkDestroyFence(m_logical_device->handle, frame.compute_fence, nullptr);
 		vkDestroyFence(m_logical_device->handle, frame.graphics_fence, nullptr);
 
-		// Cleanup frame image
-		VulkanImage::Destroy(m_logical_device, frame.image);
+		// Cleanup color and depth images
+		VulkanImage::Destroy(m_logical_device, frame.color_image);
+		VulkanImage::Destroy(m_logical_device, frame.depth_image);
+		VulkanImage::Destroy(m_logical_device, frame.resolve_image);
 	}
 
 	// Clean up VkSwapchainKHR
@@ -200,15 +199,15 @@ bool VulkanContext::RenderFrame()
 
 	// Setup current frame + Commands
 	const VulkanFrame& frame = m_frames[m_current_frame];
-	VulkanRenderCommand render_cmd{
+	VulkanCommand render_cmd{
 		m_handle,
 		m_current_frame,
 		frame.graphics_cmd_buffer,
 		frame.compute_cmd_buffer,
-		frame.image.view,
-		frame.image.sampler,
-		frame.image.extent,
-		frame.image.format
+		frame.color_image,
+		frame.depth_image,
+		frame.resolve_image,
+		m_surface.swapchain.extent
 	};
 
 	// Reset Fences
@@ -269,7 +268,7 @@ bool VulkanContext::RenderFrame()
 	// Transition render image to a general layout for commands
 	VulkanImage::TransitionLayouts(frame.graphics_cmd_buffer, {
 		VulkanImage::CreateLayoutTransition(
-			frame.image.image,
+			frame.resolve_image,
 			VK_IMAGE_LAYOUT_UNDEFINED,
 			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 			VK_PIPELINE_STAGE_2_NONE,
@@ -301,7 +300,7 @@ bool VulkanContext::RenderFrame()
 		colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
 		colorAttachment.pNext = nullptr;
 
-		colorAttachment.imageView = frame.image.view;
+		colorAttachment.imageView = frame.color_image.view;
 		colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 		colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
 		colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -309,8 +308,8 @@ bool VulkanContext::RenderFrame()
 		// Set render area to the extent of the rendered image (window)
 		VkRect2D renderArea{};
 		renderArea.extent = VkExtent2D{
-			frame.image.extent.width,
-			frame.image.extent.height
+			frame.color_image.extent.width,
+			frame.color_image.extent.height
 		};
 
 		VkRenderingInfo renderInfo{};
@@ -339,7 +338,7 @@ bool VulkanContext::RenderFrame()
 	//	copy
 	VulkanImage::TransitionLayouts(frame.graphics_cmd_buffer, {
 		VulkanImage::CreateLayoutTransition(
-			frame.image.image,
+			frame.resolve_image,
 			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 			VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 			VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
@@ -384,7 +383,7 @@ bool VulkanContext::RenderFrame()
 
 	VkCopyImageInfo2 copy_info{
 		.sType = VK_STRUCTURE_TYPE_COPY_IMAGE_INFO_2,
-		.srcImage = frame.image.image,
+		.srcImage = frame.resolve_image.image,
 		.srcImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 		.dstImage = m_surface.swapchain.images[m_surface.swapchain.current_image_index],
 		.dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
@@ -396,7 +395,7 @@ bool VulkanContext::RenderFrame()
 
 	VulkanImage::TransitionLayouts(frame.graphics_cmd_buffer, {
 		VulkanImage::CreateLayoutTransition(
-			frame.image.image,
+			frame.resolve_image.image,
 			VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 			VK_IMAGE_LAYOUT_GENERAL,
 			VK_PIPELINE_STAGE_2_TRANSFER_BIT,
@@ -761,13 +760,80 @@ bool VulkanContext::CreateSwapchain(const VkSwapchainKHR old_swapchain, const Vk
 
 bool VulkanContext::GenerateFrameData()
 {
-	m_frames.resize(m_max_frames_in_flight);
+	VkFormat depth_format = this->ChooseDepthFormat(
+		{ VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D32_SFLOAT, VK_FORMAT_D24_UNORM_S8_UINT },
+		VK_IMAGE_TILING_OPTIMAL,
+		VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
+	);
 
+	if (depth_format == VK_FORMAT_UNDEFINED)
+	{
+		AURION_ERROR("[Vulkan Context] Failed to find a supported format for depth image!");
+		return false;
+	}
+
+	m_frames.resize(m_max_frames_in_flight);
 	for (size_t i = 0; i < m_frames.size(); i++)
 	{
 		VulkanFrame& frame = m_frames[i];
 
-		// Generate Render Image
+		// Generate the Render Color Image (With MSAA)
+		{
+			VulkanImageCreateInfo create_info{};
+			create_info.extent = VkExtent3D{
+				.width = m_surface.swapchain.extent.width,
+				.height = m_surface.swapchain.extent.height,
+				.depth = 1
+			};
+
+			// Ensure each image matches the swapchain format
+			create_info.format = m_surface.swapchain.format.format;
+
+			create_info.usage_flags |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+			create_info.usage_flags |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+			create_info.usage_flags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+			create_info.usage_flags |= VK_IMAGE_USAGE_SAMPLED_BIT;
+
+			create_info.aspect_flags = VK_IMAGE_ASPECT_COLOR_BIT;
+
+			// 4x MSAA by default
+			create_info.msaa_samples = VK_SAMPLE_COUNT_4_BIT;
+
+			create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+			create_info.memory_props = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+
+			frame.color_image = VulkanImage::Create(m_logical_device->handle, m_logical_device->allocator, create_info);
+		}
+
+		// Generate Render Depth Image
+		{
+			VulkanImageCreateInfo create_info{};
+			create_info.extent = VkExtent3D{
+				.width = m_surface.swapchain.extent.width,
+				.height = m_surface.swapchain.extent.height,
+				.depth = 1
+			};
+
+			// Use the depth format
+			create_info.format = depth_format;
+
+			create_info.usage_flags |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+
+			create_info.aspect_flags = VK_IMAGE_ASPECT_DEPTH_BIT;
+
+			if (VulkanImage::HasStencilComponent(depth_format))
+				create_info.aspect_flags |= VK_IMAGE_ASPECT_STENCIL_BIT;
+
+			// 4x MSAA by default
+			create_info.msaa_samples = VK_SAMPLE_COUNT_4_BIT;
+
+			create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+			create_info.memory_props = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+
+			frame.depth_image = VulkanImage::Create(m_logical_device->handle, m_logical_device->allocator, create_info);
+		}
+
+		// Generate Render Resolve Image
 		{
 			VulkanImageCreateInfo create_info{};
 			create_info.extent = VkExtent3D{
@@ -787,10 +853,12 @@ bool VulkanContext::GenerateFrameData()
 
 			create_info.aspect_flags = VK_IMAGE_ASPECT_COLOR_BIT;
 
-			// Enable 4x MSAA by default
 			create_info.msaa_samples = VK_SAMPLE_COUNT_1_BIT;
 
-			frame.image = VulkanImage::Create(m_logical_device->handle, m_logical_device->allocator, create_info);
+			create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+			create_info.memory_props = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+
+			frame.resolve_image = VulkanImage::Create(m_logical_device->handle, m_logical_device->allocator, create_info);
 		}
 
 		// Graphics/Compute Command Pool Creation
@@ -903,9 +971,20 @@ bool VulkanContext::RevalidateCurrentFrame()
 
 	// Destroy old image data
 	{
-		vkDestroySampler(m_logical_device->handle, frame.image.sampler, nullptr);
-		vkDestroyImageView(m_logical_device->handle, frame.image.view, nullptr);
-		vmaDestroyImage(m_logical_device->allocator, frame.image.image, frame.image.allocation);
+		// Color Image
+		vkDestroySampler(m_logical_device->handle, frame.color_image.sampler, nullptr);
+		vkDestroyImageView(m_logical_device->handle, frame.color_image.view, nullptr);
+		vmaDestroyImage(m_logical_device->allocator, frame.color_image.image, frame.color_image.allocation);
+
+		// Depth Image
+		vkDestroySampler(m_logical_device->handle, frame.depth_image.sampler, nullptr);
+		vkDestroyImageView(m_logical_device->handle, frame.depth_image.view, nullptr);
+		vmaDestroyImage(m_logical_device->allocator, frame.depth_image.image, frame.depth_image.allocation);
+
+		// Resolve Image
+		vkDestroySampler(m_logical_device->handle, frame.resolve_image.sampler, nullptr);
+		vkDestroyImageView(m_logical_device->handle, frame.resolve_image.view, nullptr);
+		vmaDestroyImage(m_logical_device->allocator, frame.resolve_image.image, frame.resolve_image.allocation);
 	}
 
 	VulkanImageCreateInfo create_info{};
@@ -915,36 +994,45 @@ bool VulkanContext::RevalidateCurrentFrame()
 		.depth = 1
 	};
 
-	// Ensure each image matches the swapchain format
-	create_info.format = m_surface.swapchain.format.format;
-
-	create_info.usage_flags |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-	create_info.usage_flags |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-	create_info.usage_flags |= VK_IMAGE_USAGE_STORAGE_BIT;
-	create_info.usage_flags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-	create_info.usage_flags |= VK_IMAGE_USAGE_SAMPLED_BIT;
-
-	create_info.aspect_flags = VK_IMAGE_ASPECT_COLOR_BIT;
-
-	frame.image = VulkanImage::Create(m_logical_device->handle, m_logical_device->allocator, create_info);
-	frame.generation = m_surface.swapchain.generation;
-
-	return true;
-}
-
-bool VulkanContext::RevalidateAllFrames()
-{
-	for (size_t i = 0; i < m_frames.size(); i++)
+	// Color Image (With MSAA)
 	{
-		VulkanFrame& frame = m_frames[i];
+		// Match old format
+		create_info.format = frame.color_image.format;
 
-		// Destroy old image data
-		{
-			vkDestroySampler(m_logical_device->handle, frame.image.sampler, nullptr);
-			vkDestroyImageView(m_logical_device->handle, frame.image.view, nullptr);
-			vmaDestroyImage(m_logical_device->allocator, frame.image.image, frame.image.allocation);
-		}
+		create_info.usage_flags |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+		create_info.usage_flags |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+		create_info.usage_flags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+		create_info.usage_flags |= VK_IMAGE_USAGE_SAMPLED_BIT;
 
+		create_info.aspect_flags = frame.color_image.image_aspect;
+
+		create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+		create_info.memory_props = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+
+		create_info.msaa_samples = VK_SAMPLE_COUNT_4_BIT;
+
+		// Create color image
+		frame.color_image = VulkanImage::Create(m_logical_device->handle, m_logical_device->allocator, create_info);
+	}
+
+	// Depth Image
+	{
+		// Match old format
+		create_info.format = frame.depth_image.format;
+		create_info.usage_flags = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+		create_info.aspect_flags = frame.depth_image.image_aspect;
+
+		create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+		create_info.memory_props = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+
+		create_info.msaa_samples = VK_SAMPLE_COUNT_4_BIT;
+
+		// Create depth image
+		frame.depth_image = VulkanImage::Create(m_logical_device->handle, m_logical_device->allocator, create_info);
+	}
+
+	// Create Resolve Image
+	{
 		VulkanImageCreateInfo create_info{};
 		create_info.extent = VkExtent3D{
 			.width = m_surface.swapchain.extent.width,
@@ -963,11 +1051,94 @@ bool VulkanContext::RevalidateAllFrames()
 
 		create_info.aspect_flags = VK_IMAGE_ASPECT_COLOR_BIT;
 
-		frame.image = VulkanImage::Create(m_logical_device->handle, m_logical_device->allocator, create_info);
+		create_info.msaa_samples = VK_SAMPLE_COUNT_1_BIT;
+
+		create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+		create_info.memory_props = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+
+		frame.resolve_image = VulkanImage::Create(m_logical_device->handle, m_logical_device->allocator, create_info);
+	}
+
+	// Update frame generation number
+	frame.generation = m_surface.swapchain.generation;
+
+	return true;
+}
+
+bool VulkanContext::RevalidateAllFrames()
+{
+	for (size_t i = 0; i < m_frames.size(); i++)
+	{
+		VulkanFrame& frame = m_frames[i];
+
+		// Destroy old image data
+		{
+			// Color Image
+			vkDestroySampler(m_logical_device->handle, frame.color_image.sampler, nullptr);
+			vkDestroyImageView(m_logical_device->handle, frame.color_image.view, nullptr);
+			vmaDestroyImage(m_logical_device->allocator, frame.color_image.image, frame.color_image.allocation);
+
+			// Depth Image
+			vkDestroySampler(m_logical_device->handle, frame.depth_image.sampler, nullptr);
+			vkDestroyImageView(m_logical_device->handle, frame.depth_image.view, nullptr);
+			vmaDestroyImage(m_logical_device->allocator, frame.depth_image.image, frame.depth_image.allocation);
+		}
+
+		VulkanImageCreateInfo create_info{};
+		create_info.extent = VkExtent3D{
+			.width = m_surface.swapchain.extent.width,
+			.height = m_surface.swapchain.extent.height,
+			.depth = 1
+		};
+
+		// Ensure each image matches the swapchain format
+		create_info.format = frame.color_image.format;
+
+		create_info.usage_flags |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+		create_info.usage_flags |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+		create_info.usage_flags |= VK_IMAGE_USAGE_STORAGE_BIT;
+		create_info.usage_flags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+		create_info.usage_flags |= VK_IMAGE_USAGE_SAMPLED_BIT;
+
+		create_info.aspect_flags = frame.color_image.image_aspect;
+
+		create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+		create_info.memory_props = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+
+		// Create color image
+		frame.color_image = VulkanImage::Create(m_logical_device->handle, m_logical_device->allocator, create_info);
+
+		create_info.format = frame.depth_image.format;
+		create_info.usage_flags = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+		create_info.aspect_flags = frame.depth_image.image_aspect;
+
+		create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+		create_info.memory_props = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+
+		// Create depth image
+		frame.depth_image = VulkanImage::Create(m_logical_device->handle, m_logical_device->allocator, create_info);
+
+		// Update frame generation number
 		frame.generation = m_surface.swapchain.generation;
 	}
 
 	return true;
+}
+
+VkFormat VulkanContext::ChooseDepthFormat(const std::vector<VkFormat>& candidates, const VkImageTiling& tiling, const VkFormatFeatureFlags& features)
+{
+	for (const VkFormat& format : candidates)
+	{
+		VkFormatProperties format_properties;
+		vkGetPhysicalDeviceFormatProperties(m_logical_device->physical_device, format, &format_properties);
+
+		if (tiling == VK_IMAGE_TILING_LINEAR && (format_properties.linearTilingFeatures & features) == features)
+			return format;
+		else if (tiling == VK_IMAGE_TILING_OPTIMAL && (format_properties.optimalTilingFeatures & features) == features)
+			return format;
+	}
+
+	return VK_FORMAT_UNDEFINED;
 }
 
 bool VulkanContext::InitializeImGui()

@@ -12,7 +12,9 @@ export
 	{
 		uint32_t generation = 0;
 
-		VulkanImage image{};
+		VulkanImage color_image{};
+		VulkanImage depth_image{};
+		VulkanImage resolve_image{};
 
 		VkCommandPool compute_cmd_pool = VK_NULL_HANDLE;
 		VkCommandPool graphics_cmd_pool = VK_NULL_HANDLE;

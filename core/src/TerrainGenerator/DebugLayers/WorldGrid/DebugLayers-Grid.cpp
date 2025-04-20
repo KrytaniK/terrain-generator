@@ -138,11 +138,11 @@ void DebugGridLayer::Initialize(const DebugGridConfig* config, VulkanRenderer* r
 				.SetBlendConstants(0.f, 0.f, 0.f, 0.f)
 				.AddColorAttachment()
 					.SetBlendEnabled(VK_TRUE)
-					.SetSrcColorBlendFactor(VK_BLEND_FACTOR_SRC_COLOR)
-					.SetDstColorBlendFactor(VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR)
+					.SetSrcColorBlendFactor(VK_BLEND_FACTOR_SRC_ALPHA)
+					.SetDstColorBlendFactor(VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA)
 					.SetColorBlendOp(VK_BLEND_OP_ADD)
-					.SetSrcAlphaBlendFactor(VK_BLEND_FACTOR_SRC_ALPHA)
-					.SetDstAlphaBlendFactor(VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA)
+					.SetSrcAlphaBlendFactor(VK_BLEND_FACTOR_ONE)
+					.SetDstAlphaBlendFactor(VK_BLEND_FACTOR_ZERO)
 					.SetAlphaBlendOp(VK_BLEND_OP_ADD)
 					.SetColorWriteMask(VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT)
 			.ConfigureViewportState()
@@ -150,15 +150,22 @@ void DebugGridLayer::Initialize(const DebugGridConfig* config, VulkanRenderer* r
 				.AddScissor(VkRect2D{})
 			.ConfigureMultisampleState()
 				.SetSampleShadingEnabled(VK_FALSE)
-				.SetRasterizationSamples(VK_SAMPLE_COUNT_1_BIT)
+				.SetRasterizationSamples(VK_SAMPLE_COUNT_4_BIT)
 				.SetMinSampleShading(1.0f)
 				.SetAlphaToCoverageEnabled(VK_FALSE)
 				.SetAlphaToOneEnabled(VK_FALSE)
+			.ConfigureDepthStencilState()
+				.SetDepthTestEnabled(VK_TRUE)
+				.SetDepthWriteEnabled(VK_TRUE)
+				.SetDepthCompareOp(VK_COMPARE_OP_LESS)
+				.SetMinDepthBounds(0.0f)
+				.SetMaxDepthBounds(1.0f)
+				.SetDepthBoundsTestEnabled(VK_FALSE)
 			.ConfigureDynamicState()
 				.AddDynamicState(VK_DYNAMIC_STATE_VIEWPORT)
 				.AddDynamicState(VK_DYNAMIC_STATE_SCISSOR)
 			.AddDynamicColorAttachmentFormat(VK_FORMAT_B8G8R8A8_UNORM)
-			.SetDynamicDepthAttachmentFormat(VK_FORMAT_UNDEFINED)
+			.SetDynamicDepthAttachmentFormat(VK_FORMAT_D32_SFLOAT_S8_UINT)
 			.SetDynamicStencilAttachmentFormat(VK_FORMAT_UNDEFINED);
 
 		m_grid_pipeline = pipeline_factory.Build()[0];
@@ -167,43 +174,47 @@ void DebugGridLayer::Initialize(const DebugGridConfig* config, VulkanRenderer* r
 
 void DebugGridLayer::Record(const IGraphicsCommand* command)
 {
-	VulkanRenderCommand* cmd = (VulkanRenderCommand*)command;
+	VulkanCommand* cmd = (VulkanCommand*)command;
 
 	// Update View based on window size
-	float aspect_ratio = cmd->render_extent.width / ((float)cmd->render_extent.height);
-	this->UpdateViewMatrix(glm::radians(45.f), aspect_ratio, 0.1f, 1000.f);
+	float aspect_ratio = cmd->color_image.extent.width / ((float)cmd->color_image.extent.height);
+	this->UpdateViewMatrix(glm::radians(45.f), aspect_ratio, 0.01f, 1000.f);
 	VulkanBuffer::Write(m_mvp_buffers[cmd->current_frame], &m_mvp_matrix, sizeof(ModelViewProjectionMatrix));
 
 	// Begin Rendering
 	{
 		VkRenderingAttachmentInfo color_attachment{
 			.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-			.imageView = cmd->render_view,
+			.imageView = cmd->color_image.view,
 			.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-			//.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT,
-			//.resolveImageView = cmd->render_view,
-			//.resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-			.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+			.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT,
+			.resolveImageView = cmd->resolve_image.view,
+			.resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+			.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
 			.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-			.clearValue = VkClearValue{
-				.color = VkClearColorValue{
-					0.15f,
-					0.15f,
-					0.15f,
-					1.0f
-				}
+		};
+
+		VkRenderingAttachmentInfo depth_attachment{
+			.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+			.imageView = cmd->depth_image.view,
+			.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+			.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
+			.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+			.clearValue = {
+				.depthStencil = { 1.0f, 0 }
 			}
 		};
 
 		VkRenderingInfo render_info{
 			.sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
 			.renderArea = VkRect2D{
-				.extent = VkExtent2D{ cmd->render_extent.width, cmd->render_extent.height }
+				.extent = VkExtent2D{ cmd->color_image.extent.width, cmd->color_image.extent.height }
 			},
 			.layerCount = 1,
 			.viewMask = 0,
 			.colorAttachmentCount = 1,
-			.pColorAttachments = &color_attachment
+			.pColorAttachments = &color_attachment,
+			.pDepthAttachment = &depth_attachment
 		};
 
 		vkCmdBeginRendering(cmd->graphics_buffer, &render_info);
@@ -215,8 +226,8 @@ void DebugGridLayer::Record(const IGraphicsCommand* command)
 		VkViewport viewport = {};
 		viewport.x = 0;
 		viewport.y = 0;
-		viewport.width = static_cast<float>(cmd->render_extent.width);
-		viewport.height = static_cast<float>(cmd->render_extent.height);
+		viewport.width = static_cast<float>(cmd->color_image.extent.width);
+		viewport.height = static_cast<float>(cmd->color_image.extent.height);
 		viewport.minDepth = 0.f;
 		viewport.maxDepth = 1.f;
 
@@ -225,8 +236,8 @@ void DebugGridLayer::Record(const IGraphicsCommand* command)
 		VkRect2D scissor = {};
 		scissor.offset.x = 0;
 		scissor.offset.y = 0;
-		scissor.extent.width = cmd->render_extent.width;
-		scissor.extent.height = cmd->render_extent.height;
+		scissor.extent.width = cmd->color_image.extent.width;
+		scissor.extent.height = cmd->color_image.extent.height;
 
 		vkCmdSetScissor(cmd->graphics_buffer, 0, 1, &scissor);
 	}
@@ -274,7 +285,7 @@ void DebugGridLayer::UpdateViewMatrix(float fov, float aspect, float near_clip, 
 	float time = std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
 
 	// Rotate the model around the z-axis at 90-degrees per second
-	m_mvp_matrix.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(5.f), glm::vec3(0.0f, 0.0f, 1.f));
+	m_mvp_matrix.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(10.f), glm::vec3(0.0f, 0.0f, 1.f));
 	//m_mvp_matrix.model = glm::mat4(1.0f);
 
 	glm::vec3 cam_pos(10.f, 10.f, 5.f);

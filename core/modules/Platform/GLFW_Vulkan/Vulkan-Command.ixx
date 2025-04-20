@@ -12,39 +12,14 @@ import :Frame;
 
 export
 {
-	struct VulkanRenderCommand : public IGraphicsCommand
-	{
-		const VkCommandBuffer& graphics_buffer;
-		const VkCommandBuffer& compute_buffer;
-
-		const VkImageView& render_view;
-		const VkSampler& render_sampler;
-
-		const VkExtent3D& render_extent;
-		const VkFormat& render_format;
-	};
-
-	struct VulkanUICommand : public IGraphicsCommand
-	{
-		const VkCommandBuffer& graphics_buffer;
-		const VkCommandBuffer& compute_buffer;
-
-		const VkImageView& render_view;
-		const VkSampler& render_sampler;
-
-		ImTextureID render_texture;
-	};
-
 	struct VulkanCommand : public IGraphicsCommand
 	{
 		const VkCommandBuffer& graphics_buffer;
 		const VkCommandBuffer& compute_buffer;
 
-		const VkImage& render_image;
-		const VkImageView& render_view;
-		const VkSampler& render_sampler;
-		const VkExtent3D& render_extent;
-		const VkFormat& render_format;
+		const VulkanImage& color_image;
+		const VulkanImage& depth_image;
+		const VulkanImage& resolve_image;
 
 		const VkExtent2D& swapchain_extent;
 	};

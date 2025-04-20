@@ -55,7 +55,7 @@ namespace Vulkan
 		std::string local_cache_path = "assets/shaders/cached/" + file_name + ".spv";
 
 		// If the SPIR-V binary exists (TEMP DISABLED)
-		if (false && fs.FileExists(local_cache_path.c_str()))
+		if (fs.FileExists(local_cache_path.c_str()))
 		{
 			// Load the SPIR-V binary
 			Aurion::FSFileHandle spv_handle = fs.OpenFile(local_cache_path.c_str(), false);

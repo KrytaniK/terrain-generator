@@ -18,14 +18,14 @@ HelloCubeLayer::HelloCubeLayer()
 
 	// Generate Vertex Data
 	m_vertices = {
-		{{-1.f, -1.f, 1.f}, {0.0f, 0.0f, 0.75f}},	// 0 + Color Used For Top Face
-		{{1.f, -1.f, 1.f}, {0.0f, 0.75f, 0.0f}},	// 1 + Color Used For Back Face 
-		{{1.f, 1.f, 1.f}, {0.75f, 0.0f, 0.0f}},		// 2 + Color Used For Right Face
-		{{-1.f, 1.f, 1.f}, {0.0f, 0.75f, 0.0f}},	// 3 + Color Used For Front Face
-		{{-1.f, -1.f, -1.f}, {0.75f, 0.0f, 0.0f}},	// 4 + Color Used For Left Face
+		{{-1.f, -1.f, 1.f}, {0.0f, 0.0f, 1.0f}},	// 0 + Color Used For Top Face
+		{{1.f, -1.f, 1.f}, {0.0f, 1.0f, 0.0f}},	// 1 + Color Used For Back Face 
+		{{1.f, 1.f, 1.f}, {1.0f, 0.0f, 0.0f}},		// 2 + Color Used For Right Face
+		{{-1.f, 1.f, 1.f}, {0.0f,1.0f, 0.0f}},	// 3 + Color Used For Front Face
+		{{-1.f, -1.f, -1.f}, {1.0f, 0.0f, 0.0f}},	// 4 + Color Used For Left Face
 		{{1.f, -1.f, -1.f}, {1.0f, 0.0f, 0.0f}},	// 5 
 		{{1.f, 1.f, -1.f}, {0.0f, 0.0f, 1.0f}},		// 6 
-		{{-1.f, 1.f, -1.f}, {0.0f, 0.0f, 0.75f}},	// 7 + Color Used For Bottom Face
+		{{-1.f, 1.f, -1.f}, {0.0f, 0.0f, 1.0f}},	// 7 + Color Used For Bottom Face
 	};
 
 	// Generate Index Data
@@ -228,8 +228,8 @@ void HelloCubeLayer::Initialize(VulkanRenderer* renderer)
 			.SetBlendConstants(0.f, 0.f, 0.f, 0.f)
 			.AddColorAttachment()
 				.SetBlendEnabled(VK_FALSE)
-				.SetSrcColorBlendFactor(VK_BLEND_FACTOR_ONE)
-				.SetDstColorBlendFactor(VK_BLEND_FACTOR_ZERO)
+				.SetSrcColorBlendFactor(VK_BLEND_FACTOR_SRC_COLOR)
+				.SetDstColorBlendFactor(VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR)
 				.SetColorBlendOp(VK_BLEND_OP_ADD)
 				.SetSrcAlphaBlendFactor(VK_BLEND_FACTOR_ONE)
 				.SetDstAlphaBlendFactor(VK_BLEND_FACTOR_ZERO)
@@ -240,15 +240,22 @@ void HelloCubeLayer::Initialize(VulkanRenderer* renderer)
 			.AddScissor(VkRect2D{})
 		.ConfigureMultisampleState()
 			.SetSampleShadingEnabled(VK_FALSE)
-			.SetRasterizationSamples(VK_SAMPLE_COUNT_1_BIT)
+			.SetRasterizationSamples(VK_SAMPLE_COUNT_4_BIT)
 			.SetMinSampleShading(1.0f)
 			.SetAlphaToCoverageEnabled(VK_FALSE)
 			.SetAlphaToOneEnabled(VK_FALSE)
+		.ConfigureDepthStencilState()
+			.SetDepthTestEnabled(VK_TRUE)
+			.SetDepthWriteEnabled(VK_TRUE)
+			.SetDepthCompareOp(VK_COMPARE_OP_LESS)
+			.SetMinDepthBounds(0.0f)
+			.SetMaxDepthBounds(1.0f)
+			.SetDepthBoundsTestEnabled(VK_FALSE)
 		.ConfigureDynamicState()
 			.AddDynamicState(VK_DYNAMIC_STATE_VIEWPORT)
 			.AddDynamicState(VK_DYNAMIC_STATE_SCISSOR)
 		.AddDynamicColorAttachmentFormat(VK_FORMAT_B8G8R8A8_UNORM)
-		.SetDynamicDepthAttachmentFormat(VK_FORMAT_UNDEFINED)
+		.SetDynamicDepthAttachmentFormat(VK_FORMAT_D32_SFLOAT_S8_UINT)
 		.SetDynamicStencilAttachmentFormat(VK_FORMAT_UNDEFINED);
 
 	m_pipeline = pipeline_factory.Build()[0];
@@ -259,43 +266,58 @@ void HelloCubeLayer::Record(const IGraphicsCommand* command)
 	if (!m_enabled || m_pipeline.handle == VK_NULL_HANDLE)
 		return;
 
-	VulkanRenderCommand* render_command = (VulkanRenderCommand*)command;
+	VulkanCommand* render_command = (VulkanCommand*)command;
 
 	// Copy Buffer Data
 	VulkanBuffer::Copy(m_logical_device, render_command->graphics_buffer, m_staging_buffer, m_combined_buffer, 0, 0, m_staging_buffer.size);
 
 	// Update MVP matrix and write to the relevant buffer
-	float aspect_ratio = render_command->render_extent.width / ((float)render_command->render_extent.height);
-	this->Rotate(glm::radians(45.f), aspect_ratio, 0.1f, 1000.f);
+	float aspect_ratio = render_command->color_image.extent.width / ((float)render_command->color_image.extent.height);
+	this->Rotate(glm::radians(45.f), aspect_ratio, 0.01f, 1000.f);
 	VulkanBuffer::Write(m_mvp_buffers[render_command->current_frame], &m_mvp_matrix, sizeof(ModelViewProjectionMatrix));
 
 	// Begin Rendering
 	{
 		VkRenderingAttachmentInfo color_attachment{
 			.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-			.imageView = render_command->render_view,
+			.imageView = render_command->color_image.view,
 			.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-			.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
+			.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT,
+			.resolveImageView = render_command->resolve_image.view,
+			.resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+			.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
 			.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
 			.clearValue = VkClearValue{
-				.color = VkClearColorValue{
-					0.0f,
-					0.0f,
-					0.0f,
+				.color = {
+					0.25f,
+					0.25f,
+					0.25f,
 					1.0f
 				}
+			}
+		};
+
+		VkRenderingAttachmentInfo depth_attachment{
+			.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+			.imageView = render_command->depth_image.view,
+			.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+			.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+			.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+			.clearValue = {
+				.depthStencil = { 1.0f, 0 }
 			}
 		};
 
 		VkRenderingInfo render_info{
 			.sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
 			.renderArea = VkRect2D{
-				.extent = VkExtent2D{ render_command->render_extent.width, render_command->render_extent.height }
+				.extent = VkExtent2D{ render_command->color_image.extent.width, render_command->color_image.extent.height }
 			},
 			.layerCount = 1,
 			.viewMask = 0,
 			.colorAttachmentCount = 1,
-			.pColorAttachments = &color_attachment
+			.pColorAttachments = &color_attachment,
+			.pDepthAttachment = &depth_attachment,
 		};
 
 		vkCmdBeginRendering(render_command->graphics_buffer, &render_info);
@@ -317,8 +339,8 @@ void HelloCubeLayer::Record(const IGraphicsCommand* command)
 	VkViewport viewport = {};
 	viewport.x = 0;
 	viewport.y = 0;
-	viewport.width = static_cast<float>(render_command->render_extent.width);
-	viewport.height = static_cast<float>(render_command->render_extent.height);
+	viewport.width = static_cast<float>(render_command->color_image.extent.width);
+	viewport.height = static_cast<float>(render_command->color_image.extent.height);
 	viewport.minDepth = 0.f;
 	viewport.maxDepth = 1.f;
 
@@ -327,8 +349,8 @@ void HelloCubeLayer::Record(const IGraphicsCommand* command)
 	VkRect2D scissor = {};
 	scissor.offset.x = 0;
 	scissor.offset.y = 0;
-	scissor.extent.width = render_command->render_extent.width;
-	scissor.extent.height = render_command->render_extent.height;
+	scissor.extent.width = render_command->color_image.extent.width;
+	scissor.extent.height = render_command->color_image.extent.height;
 
 	vkCmdSetScissor(render_command->graphics_buffer, 0, 1, &scissor);
 
@@ -366,7 +388,7 @@ void HelloCubeLayer::Rotate(float fov, float aspect, float near_clip, float far_
 	float time = std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
 
 	// Rotate the model around the z-axis at 90-degrees per second
-	m_mvp_matrix.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(5.f), glm::vec3(0.0f, 0.0f, 1.f));
+	m_mvp_matrix.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(10.f), glm::vec3(0.0f, 0.0f, 1.f));
 	//m_mvp_matrix.model = glm::mat4(1.0f);
 
 	// View the geometry from an angle
