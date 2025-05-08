@@ -1,30 +1,27 @@
 #include <macros/AurionLog.h>
 
+#include <memory>
 #include <vulkan/vulkan.h>
 
-import TerrainGenerator;
-import DebugLayers;
-import DebugOverlays;
-
-import HelloCube;
+import Application;
 
 import Aurion.GLFW;
-import Aurion.Input;
 import Graphics;
 import Vulkan;
 
+import Terrain;
 
-TerrainGenerator::TerrainGenerator()
+Application::Application()
 {
 	
 }
 
-TerrainGenerator::~TerrainGenerator()
+Application::~Application()
 {
 
 }
 
-void TerrainGenerator::StartAndRun()
+void Application::StartAndRun()
 {
 	this->Load();
 	this->Start();
@@ -32,7 +29,7 @@ void TerrainGenerator::StartAndRun()
 	this->Unload();
 }
 
-void TerrainGenerator::Load()
+void Application::Load()
 {
 	// Window Driver
 	{
@@ -115,39 +112,35 @@ void TerrainGenerator::Load()
 	}
 }
 
-void TerrainGenerator::Start()
+void Application::Start()
 {
 	m_should_close = false;
 
+	// Create GLFW window
 	Aurion::WindowConfig window_config;
+	window_config.title = "Terrain Generator";
+	Aurion::WindowHandle primary_window = m_window_driver.InitWindow(window_config);
 
-	// Hello Cube Window
-	{
-		// GLFW window
-		window_config.title = "Debug Grid";
-		Aurion::WindowHandle debug_grid = m_window_driver.InitWindow(window_config);
-		debug_grid.window->SetInputContext(&m_input_context);
+	// Generate Graphics Context for the window
+	VulkanContext* graphics_ctx = m_renderer->CreateContext(primary_window);
+	graphics_ctx->SetVSyncEnabled(false);
 
-		// Generate Graphics Context
-		VulkanContext* debug_grid_ctx = m_renderer->CreateContext(debug_grid);
-		debug_grid_ctx->SetVSyncEnabled(false);
+	// Generate the first chunk
+	m_terrain_generator.GenerateTerrain();
 
-		// Render Cube
-		HelloCubeLayer* hc_layer = debug_grid_ctx->AddRenderLayer<HelloCubeLayer>();
-		hc_layer->Initialize(m_renderer);
+	// Terrain Render Layer
+	TerrainRenderLayer* terrain_rl = graphics_ctx->AddRenderLayer<TerrainRenderLayer>();
+	terrain_rl->Initialize(m_renderer, &m_terrain_generator);
 
-		// Add Debug Grid
-		DebugGridLayer* debug_grid_layer = debug_grid_ctx->AddRenderLayer<DebugGridLayer>();
-		DebugGridOverlay* debug_grid_overlay = debug_grid_ctx->AddRenderOverlay<DebugGridOverlay>();
-		debug_grid_layer->Initialize(&m_debug_grid_config, m_renderer, debug_grid);
-		debug_grid_overlay->Initialize(&m_debug_grid_config);
-	}
+	// Terrain Configuration UI Overlay
+	TerrainConfigOverlay* config_ol = graphics_ctx->AddRenderOverlay<TerrainConfigOverlay>();
+	config_ol->Initialize(m_terrain_generator);
 }
 
-void TerrainGenerator::Run()
+void Application::Run()
 {
 	std::vector<Aurion::WindowHandle> windows = {
-		m_window_driver.GetWindow("Debug Grid")
+		m_window_driver.GetWindow("Terrain Generator")
 	};
 
 	while (!m_should_close)
@@ -167,7 +160,7 @@ void TerrainGenerator::Run()
 	}
 }
 
-void TerrainGenerator::Unload()
+void Application::Unload()
 {
 
 }

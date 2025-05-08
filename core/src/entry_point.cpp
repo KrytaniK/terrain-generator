@@ -1,7 +1,7 @@
-import TerrainGenerator;
+import Application;
 
 int main()
 {
-	TerrainGenerator terrain_generator;
-	terrain_generator.StartAndRun();
+	Application app;
+	app.StartAndRun();
 }

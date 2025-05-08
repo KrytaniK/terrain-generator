@@ -1,16 +1,14 @@
 module;
 
-#include <cstdint>
-#include <vector>
-#include <span>
+#include <glm/gtc/matrix_transform.hpp>
 
-#include <glm/glm.hpp>
+export module Terrain:RenderLayer;
 
-export module HelloCube;
-
-import Resources;
 import Graphics;
 import Vulkan;
+
+import :Generator;
+import :Data;
 
 export
 {
@@ -21,13 +19,13 @@ export
 		glm::mat4 projection;
 	};
 
-	class HelloCubeLayer : public IRenderLayer
+	class TerrainRenderLayer : public IRenderLayer
 	{
 	public:
-		HelloCubeLayer();
-		virtual ~HelloCubeLayer();
+		TerrainRenderLayer();
+		virtual ~TerrainRenderLayer() override;
 
-		void Initialize(VulkanRenderer* renderer);
+		void Initialize(VulkanRenderer* renderer, TerrainGenerator* generator);
 
 		virtual void Record(const IGraphicsCommand* command) override;
 
@@ -35,21 +33,22 @@ export
 
 		virtual void Disable() override;
 
-	private:
+		void GenerateTerrainBuffers();
+
 		void Rotate(float fov, float aspect, float near_clip, float far_clip);
 
 	private:
 		bool m_enabled;
+		TerrainGenerator* m_generator;
 		VulkanDevice* m_logical_device;
-		VulkanPipeline m_pipeline;
+		VulkanPipeline m_wireframe_pipeline;
+		VulkanPipeline m_normal_pipeline;
 
-		std::vector<Vertex> m_vertices;
-		std::vector<uint32_t> m_indices;
 		VulkanBuffer m_staging_buffer;
-		VulkanBuffer m_combined_buffer;
+		VulkanBuffer m_terrain_buffer;
+		TerrainData* m_terrain_data;
 
 		ModelViewProjectionMatrix m_mvp_matrix;
-
 		VulkanDescriptorPool m_mvp_desc_pool;
 		VulkanDescriptorSetLayout m_mvp_desc_layout;
 		std::vector<VkDescriptorSet> m_mvp_desc_sets;

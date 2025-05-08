@@ -1,23 +1,22 @@
 module;
 
-#include <span>
 
-export module TerrainGenerator;
+export module Application;
 
 import Aurion.Application;
 import Aurion.GLFW;
 
-import DebugLayers;
-import Graphics;
 import Vulkan;
+
+import Terrain;
 
 export
 {
-	class TerrainGenerator : public Aurion::IApplication
+	class Application : public Aurion::IApplication
 	{
 	public:
-		TerrainGenerator();
-		virtual ~TerrainGenerator() override;
+		Application();
+		virtual ~Application() override;
 
 		void StartAndRun() override;
 
@@ -34,8 +33,7 @@ export
 		Aurion::GLFWInputDevice* m_keyboard;
 		VulkanDriver m_vulkan_driver;
 		VulkanRenderer* m_renderer;
-		std::span<VulkanPipeline> m_render_pipelines;
 		bool m_should_close;
-		DebugGridConfig m_debug_grid_config;
+		TerrainGenerator m_terrain_generator;
 	};
 }

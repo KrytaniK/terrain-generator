@@ -68,7 +68,13 @@ export
 		T* AddRenderLayer(Args&&... args)
 		{
 			static_assert(std::is_base_of_v<IRenderLayer, T>, "Layer must be derived from IRenderOverlay!");
+
+			// Add the render layer
 			this->m_render_layers.emplace_back(std::make_unique<T>(std::forward<Args>(args)...));
+
+			// Enable if not already
+			this->m_enabled = true;
+
 			return (T*)this->m_render_layers.back().get();
 		};
 
@@ -76,7 +82,13 @@ export
 		T* AddRenderOverlay(Args&&... args)
 		{
 			static_assert(std::is_base_of_v<IRenderOverlay, T>, "Overlay must be derived from IRenderOverlay!");
+
+			// Add the render overlay
 			this->m_render_overlays.emplace_back(std::make_unique<T>(std::forward<Args>(args)...));
+
+			// Enable if not already
+			this->m_enabled = true;
+
 			return (T*)this->m_render_overlays.back().get();
 		};
 

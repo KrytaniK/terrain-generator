@@ -20,11 +20,12 @@
 import Graphics;
 import Vulkan;
 import Aurion.Window;
+import Debug;
 
 VulkanContext::VulkanContext()
 	: m_handle({0, nullptr}), m_max_frames_in_flight(0), m_logical_device(nullptr),
 	m_surface({}), m_frames(), m_current_frame(0), m_render_as_ui(false), 
-	m_enabled(true), m_vsync_enabled(true)
+	m_enabled(false), m_vsync_enabled(true)
 {
 	
 }
@@ -188,15 +189,6 @@ bool VulkanContext::RenderFrame()
 	if (!m_enabled)
 		return true;
 
-	bool is_hovered = glfwGetWindowAttrib((GLFWwindow*)m_handle.window->GetNativeHandle(), GLFW_HOVERED) == GLFW_TRUE;
-	bool is_focused = glfwGetWindowAttrib((GLFWwindow*)m_handle.window->GetNativeHandle(), GLFW_FOCUSED) == GLFW_TRUE;
-	bool imgui_input_enabled = is_hovered && is_focused;
-
-	if (imgui_input_enabled)
-		m_cached_imgui_context = nullptr;
-	else
-		m_cached_imgui_context = ImGui::GetCurrentContext();
-
 	// Setup current frame + Commands
 	const VulkanFrame& frame = m_frames[m_current_frame];
 	VulkanCommand render_cmd{
@@ -210,39 +202,22 @@ bool VulkanContext::RenderFrame()
 		m_surface.swapchain.extent
 	};
 
-	// Reset Fences
-	const VkFence fences[2] = { frame.graphics_fence, frame.compute_fence };
-	vkWaitForFences(m_logical_device->handle, 2, fences, VK_TRUE, UINT64_MAX);
-	vkResetFences(m_logical_device->handle, 2, fences);
-
-	// Opt for command buffer re-use
-	vkResetCommandPool(m_logical_device->handle, frame.graphics_cmd_pool, 0);
-	vkResetCommandPool(m_logical_device->handle, frame.compute_cmd_pool, 0);
-
-	// Grab the next swapchain image
-	VkResult acquire_result = vkAcquireNextImageKHR(
-		m_logical_device->handle,
-		m_surface.swapchain.handle,
-		UINT64_MAX,
-		frame.swapchain_semaphore,
-		nullptr,
-		&m_surface.swapchain.current_image_index
-	);
-
-	// If the swapchain has changed since the last frame,
-	//	update the frame's image to match.
-	if (frame.generation != m_surface.swapchain.generation)
-		this->RevalidateCurrentFrame();
-
-	// Recreate swapchain if needed
-	if (acquire_result == VK_ERROR_OUT_OF_DATE_KHR)
+	// Reset Fences + Command Pools
 	{
-		// Recreate the swapchain and revalidate the current frame.
-		this->CreateSwapchain(m_surface.swapchain.handle);
-		this->RevalidateCurrentFrame();
+		// Reset Fences
+		std::vector<VkFence> fences = { frame.graphics_fence, frame.compute_fence };
+		vkWaitForFences(m_logical_device->handle, (uint32_t)fences.size(), fences.data(), VK_TRUE, UINT64_MAX);
+		vkResetFences(m_logical_device->handle, (uint32_t)fences.size(), fences.data());
 
-		// Retrieve the new swapchain image
-		vkAcquireNextImageKHR(
+		// Opt for command buffer re-use
+		vkResetCommandPool(m_logical_device->handle, frame.graphics_cmd_pool, 0);
+		vkResetCommandPool(m_logical_device->handle, frame.compute_cmd_pool, 0);
+	}
+
+	// Swapchain Image Retrieval & Validation
+	{
+		// Grab the next swapchain image
+		VkResult acquire_result = vkAcquireNextImageKHR(
 			m_logical_device->handle,
 			m_surface.swapchain.handle,
 			UINT64_MAX,
@@ -250,173 +225,243 @@ bool VulkanContext::RenderFrame()
 			nullptr,
 			&m_surface.swapchain.current_image_index
 		);
+
+		// If the swapchain has changed since the last frame,
+		//	update the frame's image to match.
+		if (frame.generation != m_surface.swapchain.generation)
+			this->RevalidateCurrentFrame();
+
+		// Recreate swapchain if needed
+		if (acquire_result == VK_ERROR_OUT_OF_DATE_KHR)
+		{
+			// Recreate the swapchain and revalidate the current frame.
+			this->CreateSwapchain(m_surface.swapchain.handle);
+			this->RevalidateCurrentFrame();
+
+			// Retrieve the new swapchain image
+			vkAcquireNextImageKHR(
+				m_logical_device->handle,
+				m_surface.swapchain.handle,
+				UINT64_MAX,
+				frame.swapchain_semaphore,
+				nullptr,
+				&m_surface.swapchain.current_image_index
+			);
+		}
+		else if (acquire_result != VK_SUCCESS && acquire_result == VK_SUBOPTIMAL_KHR)
+		{
+			AURION_CRITICAL("[Vulkan Window] Failed to acquire swapchain image!");
+			return false;
+		}
 	}
-	else if (acquire_result != VK_SUCCESS && acquire_result == VK_SUBOPTIMAL_KHR)
+
+	// Render Layers + Begin Cmd Recording
 	{
-		AURION_CRITICAL("[Vulkan Window] Failed to acquire swapchain image!");
-		return false;
+		// Begin recording commands
+		VkCommandBufferBeginInfo begin_info{
+			.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+			.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
+		};
+
+		vkBeginCommandBuffer(frame.graphics_cmd_buffer, &begin_info);
+		vkBeginCommandBuffer(frame.compute_cmd_buffer, &begin_info);
+
+		// Transition render image to a general layout for commands
+		VulkanImage::TransitionLayouts(frame.graphics_cmd_buffer, {
+			VulkanImage::CreateLayoutTransition(
+				frame.resolve_image,
+				VK_IMAGE_LAYOUT_UNDEFINED,
+				VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+				VK_PIPELINE_STAGE_2_NONE,
+				VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+				0,
+				VK_ACCESS_2_SHADER_WRITE_BIT | VK_ACCESS_2_SHADER_READ_BIT
+			)
+		});
 	}
-
-	// Begin recording commands
-	VkCommandBufferBeginInfo begin_info{
-		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-		.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
-	};
-	vkBeginCommandBuffer(frame.graphics_cmd_buffer, &begin_info);
-	vkBeginCommandBuffer(frame.compute_cmd_buffer, &begin_info);
-
-	// Transition render image to a general layout for commands
-	VulkanImage::TransitionLayouts(frame.graphics_cmd_buffer, {
-		VulkanImage::CreateLayoutTransition(
-			frame.resolve_image,
-			VK_IMAGE_LAYOUT_UNDEFINED,
-			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-			VK_PIPELINE_STAGE_2_NONE,
-			VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-			0,
-			VK_ACCESS_2_SHADER_WRITE_BIT | VK_ACCESS_2_SHADER_READ_BIT
-		)
-	});
 
 	// Trigger all render layers
 	for (size_t i = 0; i < m_render_layers.size(); i++)
 		m_render_layers[i]->Record(&render_cmd);
 
-	// ImGui Frame (Focus if
-	ImGui::SetCurrentContext(m_imgui_context);
-	ImGui_ImplVulkan_NewFrame();
-	ImGui_ImplGlfw_NewFrame();
-	ImGui::NewFrame();
+	// UI RENDER BOUNDARY
 
-	// Trigger all render overlays
-	for (size_t i = 0; i < m_render_overlays.size(); i++)
-		m_render_overlays[i]->Record(nullptr);
-
-	ImGui::Render();
-
-	// Draw ImGui to render target
+	// UI Rendering
+	if (m_render_overlays.size() > 0)
 	{
-		VkRenderingAttachmentInfo colorAttachment{};
-		colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-		colorAttachment.pNext = nullptr;
+		// Some calculations to figure out which ImGui context we *should* be in.
+		bool is_hovered = glfwGetWindowAttrib((GLFWwindow*)m_handle.window->GetNativeHandle(), GLFW_HOVERED) == GLFW_TRUE;
+		bool is_focused = glfwGetWindowAttrib((GLFWwindow*)m_handle.window->GetNativeHandle(), GLFW_FOCUSED) == GLFW_TRUE;
+		bool imgui_input_enabled = is_hovered && is_focused;
 
-		colorAttachment.imageView = frame.color_image.view;
-		colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-		colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-		colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+		if (imgui_input_enabled)
+			m_cached_imgui_context = nullptr;
+		else
+			m_cached_imgui_context = ImGui::GetCurrentContext();
 
-		// Set render area to the extent of the rendered image (window)
-		VkRect2D renderArea{};
-		renderArea.extent = VkExtent2D{
-			frame.color_image.extent.width,
-			frame.color_image.extent.height
+		// ImGui Frame
+		ImGui::SetCurrentContext(m_imgui_context);
+		ImGui_ImplVulkan_NewFrame();
+		ImGui_ImplGlfw_NewFrame();
+		ImGui::NewFrame();
+
+		// Trigger all render overlays
+		for (size_t i = 0; i < m_render_overlays.size(); i++)
+			m_render_overlays[i]->Record(nullptr);
+
+		ImGui::Render();
+
+		// Draw ImGui to render target
+		{
+			VkRenderingAttachmentInfo colorAttachment{};
+			colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+			colorAttachment.pNext = nullptr;
+
+			colorAttachment.imageView = frame.color_image.view;
+			colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+			colorAttachment.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
+			colorAttachment.resolveImageView = frame.resolve_image.view;
+			colorAttachment.resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+			colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+			colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+			
+			// If no render layers exist, default to clearing the image
+			if (m_render_layers.size() == 0)
+			{
+				colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+				colorAttachment.clearValue.color = VkClearColorValue{
+					0.0f,
+					0.0f,
+					0.0f,
+					1.0f,
+				};
+			}
+
+			// Set render area to the extent of the rendered image (window)
+			VkRect2D renderArea{};
+			renderArea.extent = VkExtent2D{
+				frame.color_image.extent.width,
+				frame.color_image.extent.height
+			};
+
+			VkRenderingInfo renderInfo{};
+			renderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+			renderInfo.colorAttachmentCount = 1;
+			renderInfo.pColorAttachments = &colorAttachment;
+			renderInfo.renderArea = renderArea;
+			renderInfo.flags = 0;
+			renderInfo.layerCount = 1;
+
+			vkCmdBeginRendering(frame.graphics_cmd_buffer, &renderInfo);
+
+			ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), frame.graphics_cmd_buffer);
+
+			vkCmdEndRendering(frame.graphics_cmd_buffer);
+		}
+
+		ImGuiIO& io = ImGui::GetIO();
+		if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
+		{
+			ImGui::UpdatePlatformWindows();
+			ImGui::RenderPlatformWindowsDefault();
+		}
+
+		// Return control to the focused context
+		if (!imgui_input_enabled)
+			ImGui::SetCurrentContext(m_cached_imgui_context);
+	}
+
+	// IMAGE PRESENT
+
+	// Copy Image
+	{
+		// Get render image and swapchain in appropriate layouts for image
+		//	copy
+		VulkanImage::TransitionLayouts(frame.graphics_cmd_buffer, {
+			VulkanImage::CreateLayoutTransition(
+				frame.resolve_image,
+				VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+				VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+				VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+				VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+				VK_ACCESS_2_SHADER_WRITE_BIT | VK_ACCESS_2_SHADER_READ_BIT,
+				VK_ACCESS_2_TRANSFER_READ_BIT
+			),
+			VulkanImage::CreateLayoutTransition(
+				m_surface.swapchain.images[m_surface.swapchain.current_image_index],
+				VK_IMAGE_LAYOUT_UNDEFINED,
+				VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+				VK_PIPELINE_STAGE_2_NONE,
+				VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+				0,
+				VK_ACCESS_2_SHADER_WRITE_BIT
+			)
+			});
+
+		// Copy frame image to swapchain image
+		VkImageCopy2 region{
+			.sType = VK_STRUCTURE_TYPE_IMAGE_COPY_2,
+			.srcSubresource = {
+				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+				.mipLevel = 0,
+				.baseArrayLayer = 0,
+				.layerCount = 1
+			},
+			.srcOffset = { 0, 0, 0 },
+			.dstSubresource = {
+				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+				.mipLevel = 0,
+				.baseArrayLayer = 0,
+				.layerCount = 1
+			},
+			.dstOffset = { 0, 0, 0 },
+			.extent = {
+				.width = m_surface.swapchain.extent.width,
+				.height = m_surface.swapchain.extent.height,
+				.depth = 1
+			}
 		};
 
-		VkRenderingInfo renderInfo{};
-		renderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
-		renderInfo.colorAttachmentCount = 1;
-		renderInfo.pColorAttachments = &colorAttachment;
-		renderInfo.renderArea = renderArea;
-		renderInfo.flags = 0;
-		renderInfo.layerCount = 1;
+		VkCopyImageInfo2 copy_info{
+			.sType = VK_STRUCTURE_TYPE_COPY_IMAGE_INFO_2,
+			.srcImage = frame.resolve_image.image,
+			.srcImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+			.dstImage = m_surface.swapchain.images[m_surface.swapchain.current_image_index],
+			.dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			.regionCount = 1,
+			.pRegions = &region
+		};
 
-		vkCmdBeginRendering(frame.graphics_cmd_buffer, &renderInfo);
+		vkCmdCopyImage2(frame.graphics_cmd_buffer, &copy_info);
 
-		ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), frame.graphics_cmd_buffer);
-
-		vkCmdEndRendering(frame.graphics_cmd_buffer);
+		VulkanImage::TransitionLayouts(frame.graphics_cmd_buffer, {
+			VulkanImage::CreateLayoutTransition(
+				frame.resolve_image.image,
+				VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+				VK_IMAGE_LAYOUT_GENERAL,
+				VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+				VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+				VK_ACCESS_2_TRANSFER_READ_BIT,
+				VK_ACCESS_2_SHADER_WRITE_BIT | VK_ACCESS_2_SHADER_READ_BIT
+			),
+			VulkanImage::CreateLayoutTransition(
+				m_surface.swapchain.images[m_surface.swapchain.current_image_index],
+				VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+				VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+				VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+				VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT,
+				VK_ACCESS_2_TRANSFER_WRITE_BIT,
+				0
+			),
+			});
 	}
 
-	ImGuiIO& io = ImGui::GetIO();
-	if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
+	// End Cmd Recording
 	{
-		ImGui::UpdatePlatformWindows();
-		ImGui::RenderPlatformWindowsDefault();
+		// End command buffer recording
+		vkEndCommandBuffer(frame.graphics_cmd_buffer);
+		vkEndCommandBuffer(frame.compute_cmd_buffer);
 	}
-
-	// Get render image and swapchain in appropriate layouts for image
-	//	copy
-	VulkanImage::TransitionLayouts(frame.graphics_cmd_buffer, {
-		VulkanImage::CreateLayoutTransition(
-			frame.resolve_image,
-			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-			VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-			VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-			VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-			VK_ACCESS_2_SHADER_WRITE_BIT | VK_ACCESS_2_SHADER_READ_BIT,
-			VK_ACCESS_2_TRANSFER_READ_BIT
-		),
-		VulkanImage::CreateLayoutTransition(
-			m_surface.swapchain.images[m_surface.swapchain.current_image_index],
-			VK_IMAGE_LAYOUT_UNDEFINED,
-			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-			VK_PIPELINE_STAGE_2_NONE,
-			VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-			0,
-			VK_ACCESS_2_SHADER_WRITE_BIT
-		)
-	});
-
-	// Copy frame image to swapchain image
-	VkImageCopy2 region{
-		.sType = VK_STRUCTURE_TYPE_IMAGE_COPY_2,
-		.srcSubresource = {
-			.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-			.mipLevel = 0,
-			.baseArrayLayer = 0,
-			.layerCount = 1
-		},
-		.srcOffset = { 0, 0, 0 },
-		.dstSubresource = {
-			.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-			.mipLevel = 0,
-			.baseArrayLayer = 0,
-			.layerCount = 1
-		},
-		.dstOffset = { 0, 0, 0 },
-		.extent = {
-			.width = m_surface.swapchain.extent.width,
-			.height = m_surface.swapchain.extent.height,
-			.depth = 1
-		}
-	};
-
-	VkCopyImageInfo2 copy_info{
-		.sType = VK_STRUCTURE_TYPE_COPY_IMAGE_INFO_2,
-		.srcImage = frame.resolve_image.image,
-		.srcImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-		.dstImage = m_surface.swapchain.images[m_surface.swapchain.current_image_index],
-		.dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-		.regionCount = 1,
-		.pRegions = &region
-	};
-
-	vkCmdCopyImage2(frame.graphics_cmd_buffer, &copy_info);
-
-	VulkanImage::TransitionLayouts(frame.graphics_cmd_buffer, {
-		VulkanImage::CreateLayoutTransition(
-			frame.resolve_image.image,
-			VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-			VK_IMAGE_LAYOUT_GENERAL,
-			VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-			VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-			VK_ACCESS_2_TRANSFER_READ_BIT,
-			VK_ACCESS_2_SHADER_WRITE_BIT | VK_ACCESS_2_SHADER_READ_BIT
-		),
-		VulkanImage::CreateLayoutTransition(
-			m_surface.swapchain.images[m_surface.swapchain.current_image_index],
-			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-			VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-			VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-			VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT,
-			VK_ACCESS_2_TRANSFER_WRITE_BIT,
-			0
-		),
-	});
-
-	// End command buffer recording
-	vkEndCommandBuffer(frame.graphics_cmd_buffer);
-	vkEndCommandBuffer(frame.compute_cmd_buffer);
 
 	// Submit All Commands
 	{
@@ -484,11 +529,6 @@ bool VulkanContext::RenderFrame()
 	}
 
 	m_current_frame = (m_current_frame + 1) % m_frames.size();
-
-	// Return control to the focused context
-	if (!imgui_input_enabled)
-		ImGui::SetCurrentContext(m_cached_imgui_context);
-
 	return true;
 }
 
@@ -1200,7 +1240,7 @@ bool VulkanContext::InitializeImGui()
 	vulkan_init_info.DescriptorPool = m_imgui_desc_pool;
 	vulkan_init_info.MinImageCount = m_max_frames_in_flight;
 	vulkan_init_info.ImageCount = m_max_frames_in_flight;
-	vulkan_init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+	vulkan_init_info.MSAASamples = m_frames[0].color_image.sample_flags; // Match frame sample count
 	vulkan_init_info.UseDynamicRendering = true;
 	vulkan_init_info.PipelineRenderingCreateInfo = pipeline_info;
 
