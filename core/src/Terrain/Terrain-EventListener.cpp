@@ -32,11 +32,19 @@ void TerrainEventListener::OnEvent(Aurion::IEvent* event)
 		return;
 	}
 
+	if (m_void_callback)
+		m_void_callback();
+
 	if (m_callback)
-		m_callback(static_cast<TerrainUpdateEvent*>(event));
+		m_callback(static_cast<TerrainEvent*>(event));
 }
 
-void TerrainEventListener::Bind(const std::function<void(TerrainUpdateEvent*)>& callback)
+void TerrainEventListener::Bind(const std::function<void()>& callback)
+{
+	m_void_callback = callback;
+}
+
+void TerrainEventListener::Bind(const std::function<void(TerrainEvent*)>& callback)
 {
 	m_callback = callback;
 }

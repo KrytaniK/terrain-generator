@@ -2,6 +2,8 @@
 
 #include <imgui.h>
 
+#include <glm/glm.hpp>
+
 import Terrain;
 
 TerrainConfigOverlay::TerrainConfigOverlay()
@@ -15,30 +17,22 @@ TerrainConfigOverlay::~TerrainConfigOverlay()
 
 }
 
-void TerrainConfigOverlay::Initialize(TerrainGenerator& generator)
+void TerrainConfigOverlay::Initialize(TerrainEventDispatcher& event_dispatcher)
 {
-	m_generator = &generator;
-	m_config = &m_generator->GetConfiguration();
+	// Attach event dispatcher
+	m_event_dispatcher = &event_dispatcher;
+
+	// Attach configuration structure
+	m_update_event.new_config = &m_config;
+	m_update_event.type = 0;
 }
 
 void TerrainConfigOverlay::Record(const IGraphicsCommand* command)
 {
-	if (!m_config)
-	{
-		AURION_ERROR("Failed to render Config UI: Invalid Terrain Generator Config!");
-		return;
-	}
-
 	ImGui::Begin("Terrain Configuration", &m_enabled, ImGuiWindowFlags_AlwaysAutoResize);
 
-		if (ImGui::SliderFloat("Scale", &m_config->scale, 0.1f, 10.0f))
-			m_generator->GenerateTerrain();
-
-		if (ImGui::SliderInt("Chunk Size", &m_config->chunk_size, 1, 32))
-			m_generator->GenerateTerrain();
-
-		if (ImGui::Checkbox("Wireframe", &m_config->wireframe))
-			m_generator->GenerateTerrain();
+		if (ImGui::InputInt("Chunk Resolution", &m_config.chunk_resolution, 1, 100))
+			m_event_dispatcher->Dispatch(&m_update_event);
 
 	ImGui::End();
 }

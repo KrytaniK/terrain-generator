@@ -8,7 +8,9 @@ import Graphics;
 import Vulkan;
 
 import :Generator;
+import :Events;
 import :Data;
+
 
 export
 {
@@ -19,13 +21,14 @@ export
 		glm::mat4 projection;
 	};
 
+	class World;
 	class TerrainRenderLayer : public IRenderLayer
 	{
 	public:
 		TerrainRenderLayer();
 		virtual ~TerrainRenderLayer() override;
 
-		void Initialize(VulkanRenderer* renderer, TerrainGenerator* generator);
+		void Initialize(VulkanRenderer* renderer, World& world, TerrainEventDispatcher& event_dispatcher);
 
 		virtual void Record(const IGraphicsCommand* command) override;
 
@@ -33,25 +36,36 @@ export
 
 		virtual void Disable() override;
 
-		void GenerateTerrainBuffers();
-
 		void Rotate(float fov, float aspect, float near_clip, float far_clip);
 
 	private:
-		bool m_enabled;
-		TerrainGenerator* m_generator;
+		void GenerateTerrainBuffers();
+
+		void GenerateCameraBuffers();
+
+		void BuildTerrainPipelines();
+
+	private:
+		VulkanRenderer* m_renderer;
 		VulkanDevice* m_logical_device;
 		VulkanPipeline m_wireframe_pipeline;
-		VulkanPipeline m_normal_pipeline;
+
+		TerrainGenerator* m_generator;
+
+		World* m_world;
+		TerrainEventListener m_terrain_listener;
 
 		VulkanBuffer m_staging_buffer;
 		VulkanBuffer m_terrain_buffer;
-		TerrainData* m_terrain_data;
+		size_t m_vertex_count;
+		size_t m_index_count;
 
 		ModelViewProjectionMatrix m_mvp_matrix;
 		VulkanDescriptorPool m_mvp_desc_pool;
 		VulkanDescriptorSetLayout m_mvp_desc_layout;
 		std::vector<VkDescriptorSet> m_mvp_desc_sets;
 		std::vector<VulkanBuffer> m_mvp_buffers;
+		bool m_enabled;
+		bool m_revalidate_terrain;
 	};
 }

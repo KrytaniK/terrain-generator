@@ -11,9 +11,9 @@ import Aurion.Events;
 
 export
 {
-	class TerrainUpdateEvent : public Aurion::IEvent
+	struct TerrainEvent : public Aurion::IEvent
 	{
-		TerrainData* data;
+		TerrainConfig* new_config;
 	};
 
 	class TerrainEventListener : public Aurion::IEventListener
@@ -27,11 +27,13 @@ export
 
 		virtual void OnEvent(Aurion::IEvent* event) override;
 
-		void Bind(const std::function<void(TerrainUpdateEvent*)>& callback);
+		void Bind(const std::function<void()>& callback);
+		void Bind(const std::function<void(TerrainEvent*)>& callback);
 
 	private:
 		uint64_t m_event_type;
-		std::function<void(TerrainUpdateEvent*)> m_callback;
+		std::function<void()> m_void_callback;
+		std::function<void(TerrainEvent*)> m_callback;
 	};
 
 	class TerrainEventDispatcher : public Aurion::IEventDispatcher
@@ -47,7 +49,7 @@ export
 
 		virtual bool RemoveEventListener(Aurion::IEventListener* listener) override;
 
-		virtual void Dispatch(Aurion::IEvent* event) override;
+		virtual void Dispatch(Aurion::IEvent* event = nullptr) override;
 
 	private:
 		uint64_t m_event_type;

@@ -1,19 +1,22 @@
 export module Terrain:ConfigOverlay;
 
 import Graphics;
+import Vulkan;
 
 import :Generator;
+import :Events;
 import :Data;
 
 export
 {
+	class World;
 	class TerrainConfigOverlay : public IRenderOverlay
 	{
 	public:
 		TerrainConfigOverlay();
 		virtual ~TerrainConfigOverlay() override;
 
-		void Initialize(TerrainGenerator& generator);
+		void Initialize(TerrainEventDispatcher& event_dispatcher);
 
 		void Record(const IGraphicsCommand* command) override;
 
@@ -23,7 +26,9 @@ export
 
 	private:
 		bool m_enabled;
-		TerrainGenerator* m_generator;
-		TerrainConfig* m_config;
+		World* world;
+		TerrainEventDispatcher* m_event_dispatcher;
+		TerrainEvent m_update_event;
+		TerrainConfig m_config;
 	};
 }

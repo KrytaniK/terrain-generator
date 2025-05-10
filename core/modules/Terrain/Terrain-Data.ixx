@@ -12,22 +12,15 @@ export
 {
 	struct TerrainConfig
 	{
-		bool wireframe = true;
-		int chunk_size = 10;
-		float scale = 1.0;
+		int chunk_resolution = 16;
 	};
 
 	struct TerrainChunk
 	{
+		size_t id = 0;
+		size_t size = 0;
+		glm::vec3 origin;
 		std::vector<Vertex> vertices;
 		std::vector<uint32_t> indices;
-	};
-
-	struct TerrainData
-	{
-		std::vector<TerrainChunk> chunks;
-		size_t vertex_count = 0;
-		size_t index_count = 0;
-		bool valid = false;
 	};
 }

@@ -1,11 +1,14 @@
 #include <macros/AurionLog.h>
 
 #include <memory>
+
+#include <GLFW/glfw3.h>
 #include <vulkan/vulkan.h>
 
 import Application;
 
 import Aurion.GLFW;
+import Aurion.Input;
 import Graphics;
 import Vulkan;
 
@@ -116,25 +119,26 @@ void Application::Start()
 {
 	m_should_close = false;
 
-	// Create GLFW window
+	// World Initialization
+	TerrainConfig terrain_config;
+	m_world.Initialize(terrain_config, m_terrain_event_dispatcher);
+
+	// GLFW Window Creation
 	Aurion::WindowConfig window_config;
 	window_config.title = "Terrain Generator";
 	Aurion::WindowHandle primary_window = m_window_driver.InitWindow(window_config);
 
-	// Generate Graphics Context for the window
+	// Window Graphics Context
 	VulkanContext* graphics_ctx = m_renderer->CreateContext(primary_window);
 	graphics_ctx->SetVSyncEnabled(false);
 
-	// Generate the first chunk
-	m_terrain_generator.GenerateTerrain();
-
 	// Terrain Render Layer
 	TerrainRenderLayer* terrain_rl = graphics_ctx->AddRenderLayer<TerrainRenderLayer>();
-	terrain_rl->Initialize(m_renderer, &m_terrain_generator);
+	terrain_rl->Initialize(m_renderer, m_world, m_terrain_event_dispatcher);
 
 	// Terrain Configuration UI Overlay
 	TerrainConfigOverlay* config_ol = graphics_ctx->AddRenderOverlay<TerrainConfigOverlay>();
-	config_ol->Initialize(m_terrain_generator);
+	config_ol->Initialize(m_terrain_event_dispatcher);
 }
 
 void Application::Run()

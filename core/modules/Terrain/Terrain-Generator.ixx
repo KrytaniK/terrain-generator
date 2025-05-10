@@ -1,3 +1,9 @@
+module;
+
+#include <vector>
+
+#include <glm/glm.hpp>
+
 export module Terrain:Generator;
 
 import :Data;
@@ -10,14 +16,11 @@ export
 		TerrainGenerator();
 		~TerrainGenerator();
 
-		TerrainConfig& GetConfiguration();
+		TerrainChunk* RegenerateChunk(const size_t& chunk_id, const TerrainConfig& config);
 
-		TerrainData& GetTerrainData();
-
-		void GenerateTerrain();
+		TerrainChunk* GenerateChunk(const glm::vec3& origin, const size_t& size, const TerrainConfig& config);
 
 	private:
-		TerrainData m_data;
-		TerrainConfig m_config;
+		std::vector<TerrainChunk> m_chunks;
 	};
 }

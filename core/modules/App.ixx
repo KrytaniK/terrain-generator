@@ -1,6 +1,3 @@
-module;
-
-
 export module Application;
 
 import Aurion.Application;
@@ -8,6 +5,7 @@ import Aurion.GLFW;
 
 import Vulkan;
 
+import World;
 import Terrain;
 
 export
@@ -28,12 +26,10 @@ export
 
 	private:
 		Aurion::GLFWDriver m_window_driver;
-		Aurion::GLFWInputContext m_input_context;
-		Aurion::GLFWInputDevice* m_mouse;
-		Aurion::GLFWInputDevice* m_keyboard;
 		VulkanDriver m_vulkan_driver;
 		VulkanRenderer* m_renderer;
+		World m_world;
+		TerrainEventDispatcher m_terrain_event_dispatcher;
 		bool m_should_close;
-		TerrainGenerator m_terrain_generator;
 	};
 }
