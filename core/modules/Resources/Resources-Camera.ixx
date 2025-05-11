@@ -25,5 +25,6 @@ export
 		float near_clip = 0.01f;
 		float far_clip = 1000.0f;
 		float sensitivity = 1.f;
+		float movement_speed = 1.f;
 	};
 }

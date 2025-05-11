@@ -199,10 +199,14 @@ void Application::SetupInput()
 
 	s_key_callbacks.push_back(glfwSetKeyCallback(window, [](GLFWwindow* win, int key, int scancode, int action, int mods) {}));
 	s_key_callbacks.push_back([](GLFWwindow* win, int key, int scancode, int action, int mods) {
+		if (glfwGetInputMode(win, GLFW_CURSOR) == GLFW_CURSOR_NORMAL)
+			return;
+
 		Aurion::GLFWInputContext* context = Application::InputContext();
 
 		// Update device control
-		context->GetDevice("Keyboard")->GetControl(key)->Update(&action, sizeof(int));
+		context->GetDevice("Keyboard")->GetControl(key)->Update(&action, 1);
+
 	});
 	s_key_callbacks.push_back([](GLFWwindow* win, int key, int scancode, int action, int mods) {
 		if (action == GLFW_PRESS && key == GLFW_KEY_ESCAPE)

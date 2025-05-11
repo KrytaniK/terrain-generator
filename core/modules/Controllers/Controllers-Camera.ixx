@@ -21,6 +21,11 @@ export
 		Aurion::GLFWInputContext* m_input_context;
 		Aurion::GLFWInputDevice* m_mouse;
 		Aurion::GLFWInputDevice* m_keyboard;
+		Aurion::GLFWAxisControl* m_mouse_position;
+		Aurion::GLFWButtonControl* m_key_w;
+		Aurion::GLFWButtonControl* m_key_a;
+		Aurion::GLFWButtonControl* m_key_s;
+		Aurion::GLFWButtonControl* m_key_d;
 		Camera m_camera;
 		double m_last_mouse_x;
 		double m_last_mouse_y;
