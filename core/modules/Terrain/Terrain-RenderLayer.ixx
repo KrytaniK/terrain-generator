@@ -4,6 +4,7 @@ module;
 
 export module Terrain:RenderLayer;
 
+import Resources;
 import Graphics;
 import Vulkan;
 
@@ -53,6 +54,8 @@ export
 		TerrainGenerator* m_generator;
 
 		World* m_world;
+		Camera* m_camera;
+
 		TerrainEventListener m_terrain_listener;
 
 		VulkanBuffer m_staging_buffer;

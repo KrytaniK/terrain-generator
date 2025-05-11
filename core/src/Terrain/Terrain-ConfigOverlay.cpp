@@ -29,6 +29,9 @@ void TerrainConfigOverlay::Initialize(TerrainEventDispatcher& event_dispatcher)
 
 void TerrainConfigOverlay::Record(const IGraphicsCommand* command)
 {
+	if (!m_enabled)
+		return;
+
 	ImGui::Begin("Terrain Configuration", &m_enabled, ImGuiWindowFlags_AlwaysAutoResize);
 
 		if (ImGui::InputInt("Chunk Resolution", &m_config.chunk_resolution, 1, 100))

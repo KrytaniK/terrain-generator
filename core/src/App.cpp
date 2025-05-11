@@ -1,6 +1,7 @@
 #include <macros/AurionLog.h>
 
 #include <memory>
+#include <chrono>
 
 #include <GLFW/glfw3.h>
 #include <vulkan/vulkan.h>
@@ -122,6 +123,7 @@ void Application::Start()
 	// World Initialization
 	TerrainConfig terrain_config;
 	m_world.Initialize(terrain_config, m_terrain_event_dispatcher);
+	m_world.SetPrimaryCamera(m_camera_controller.GetCamera());
 
 	// GLFW Window Creation
 	Aurion::WindowConfig window_config;
@@ -137,8 +139,14 @@ void Application::Start()
 	terrain_rl->Initialize(m_renderer, m_world, m_terrain_event_dispatcher);
 
 	// Terrain Configuration UI Overlay
-	TerrainConfigOverlay* config_ol = graphics_ctx->AddRenderOverlay<TerrainConfigOverlay>();
-	config_ol->Initialize(m_terrain_event_dispatcher);
+	TerrainConfigOverlay* terrain_col = graphics_ctx->AddRenderOverlay<TerrainConfigOverlay>();
+	terrain_col->Initialize(m_terrain_event_dispatcher);
+
+	// Camera Configuration UI Overlay
+	CameraConfigUIOverlay* cam_col = graphics_ctx->AddRenderOverlay<CameraConfigUIOverlay>();
+	cam_col->Initialize(m_camera_controller.GetCamera());
+
+	this->SetupInput();
 }
 
 void Application::Run()
@@ -147,11 +155,19 @@ void Application::Run()
 		m_window_driver.GetWindow("Terrain Generator")
 	};
 
+	auto prev_time = std::chrono::high_resolution_clock::now();
+
 	while (!m_should_close)
 	{
+		auto curr_time = std::chrono::high_resolution_clock::now();
+		float delta_time = std::chrono::duration<float>(curr_time - prev_time).count();
+		prev_time = curr_time;
+
 		// Input Polling and Window Updates
 		for (auto& [id, handle] : windows)
 			handle->Update();
+
+		m_camera_controller.Update(delta_time);
 
 		// Render Commands
 		m_renderer->Render();
@@ -167,4 +183,64 @@ void Application::Run()
 void Application::Unload()
 {
 
+}
+
+void Application::SetupInput()
+{
+	Aurion::WindowHandle window_handle = m_window_driver.GetWindow("Terrain Generator");
+	
+	// Input Devices
+	Aurion::GLFWInputDevice* keyboard = Application::InputContext()->CreateDevice(Aurion::C_GLFW_KEYBOARD_INFO, Aurion::C_GLFW_KEYBOARD_LAYOUT);
+	Aurion::GLFWInputDevice* mouse = Application::InputContext()->CreateDevice(Aurion::C_GLFW_MOUSE_INFO, Aurion::C_GLFW_MOUSE_LAYOUT);
+
+	GLFWwindow* window = (GLFWwindow*)window_handle.window->GetNativeHandle();
+
+	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+
+	s_key_callbacks.push_back(glfwSetKeyCallback(window, [](GLFWwindow* win, int key, int scancode, int action, int mods) {}));
+	s_key_callbacks.push_back([](GLFWwindow* win, int key, int scancode, int action, int mods) {
+		Aurion::GLFWInputContext* context = Application::InputContext();
+
+		// Update device control
+		context->GetDevice("Keyboard")->GetControl(key)->Update(&action, sizeof(int));
+	});
+	s_key_callbacks.push_back([](GLFWwindow* win, int key, int scancode, int action, int mods) {
+		if (action == GLFW_PRESS && key == GLFW_KEY_ESCAPE)
+		{
+			if (glfwGetInputMode(win, GLFW_CURSOR) == GLFW_CURSOR_DISABLED)
+				glfwSetInputMode(win, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+			else
+				glfwSetInputMode(win, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+		}
+	});
+
+	s_pos_callbacks.push_back(glfwSetCursorPosCallback(window, [](GLFWwindow* win, double xpos, double ypos) {}));
+	s_pos_callbacks.push_back([](GLFWwindow* win, double xpos, double ypos) {
+		if (glfwGetInputMode(win, GLFW_CURSOR) == GLFW_CURSOR_NORMAL)
+			return;
+
+		Aurion::GLFWInputContext* context = Application::InputContext();
+
+		// Update device control
+		double vals[2] = { xpos, ypos };
+		context->GetDevice("Mouse")->GetControl(Aurion::GLFW_MOUSE_POSITION)->Update(vals, 2 * sizeof(double));
+	});
+
+	// Input Callbacks
+	glfwSetKeyCallback(window, Application::DispatchGLFWKeyCallbacks);
+	glfwSetCursorPosCallback(window, Application::DispatchGLFWCursorPosCallbacks);
+
+	m_camera_controller = CameraController();
+}
+
+void Application::DispatchGLFWKeyCallbacks(GLFWwindow* window, int key, int scancode, int action, int mods)
+{
+	for (size_t i = 0; i < s_key_callbacks.size(); i++)
+		s_key_callbacks[i](window, key, scancode, action, mods);
+}
+
+void Application::DispatchGLFWCursorPosCallbacks(GLFWwindow* window, double xpos, double ypos)
+{
+	for (size_t i = 0; i < s_pos_callbacks.size(); i++)
+		s_pos_callbacks[i](window, xpos, ypos);
 }

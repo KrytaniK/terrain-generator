@@ -12,7 +12,7 @@ export
 {
 	struct TerrainConfig
 	{
-		int chunk_resolution = 16;
+		int chunk_resolution = 128;
 	};
 
 	struct TerrainChunk

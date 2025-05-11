@@ -1,5 +1,6 @@
 export module World:Interface;
 
+import Resources;
 import Terrain;
 
 import :Partition;
@@ -16,9 +17,14 @@ export
 
 		WorldPartition& GetRootPartition();
 
+		void SetPrimaryCamera(Camera& camera);
+
+		Camera& GetPrimaryCamera();
+
 	private:
 		TerrainGenerator m_terrain_generator;
 		TerrainEventListener m_terrain_listener;
 		WorldPartition m_root_partition;
+		Camera* m_primary_camera;
 	};
 }

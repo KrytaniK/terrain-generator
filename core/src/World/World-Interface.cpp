@@ -48,3 +48,13 @@ WorldPartition& World::GetRootPartition()
 	return m_root_partition;
 }
 
+void World::SetPrimaryCamera(Camera& camera)
+{
+	m_primary_camera = &camera;
+}
+
+Camera& World::GetPrimaryCamera()
+{
+	return *m_primary_camera;
+}
+

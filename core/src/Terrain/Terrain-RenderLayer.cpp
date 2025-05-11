@@ -37,6 +37,7 @@ void TerrainRenderLayer::Initialize(VulkanRenderer* renderer, World& world, Terr
 	m_renderer = renderer;
 	m_logical_device = renderer->GetLogicalDevice();
 	m_world = &world;
+	m_camera = &m_world->GetPrimaryCamera();
 
 	m_terrain_listener.Bind([this]() {
 		m_revalidate_terrain = true;
@@ -73,8 +74,10 @@ void TerrainRenderLayer::Record(const IGraphicsCommand* command)
 	}
 
 	// Update MVP matrix and write to the relevant buffer
-	float aspect_ratio = render_command->color_image.extent.width / ((float)render_command->color_image.extent.height);
-	this->Rotate(glm::radians(45.f), aspect_ratio, 0.01f, 1000.f);
+	m_camera->aspect_ratio = render_command->color_image.extent.width / ((float)render_command->color_image.extent.height);
+	m_mvp_matrix.model = glm::mat4(1.0f);
+	m_mvp_matrix.view = m_camera->view_projection.view;
+	m_mvp_matrix.projection = m_camera->view_projection.projection;
 	VulkanBuffer::Write(m_mvp_buffers[render_command->current_frame], &m_mvp_matrix, sizeof(ModelViewProjectionMatrix));
 
 	// Begin Rendering
